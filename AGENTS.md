@@ -22,3 +22,11 @@ Linear CLI：自用的 Linear 命令行工具。官方未提供 CLI，第三方�
 
 新增顶层条目（目录或关键文件）时，同步更新本表；新增目录时同时创建其
 `ABOUTME.md`。
+
+## Git 与提交
+
+提交信息用英文，遵循 Conventional Commits：`<type>: <description>`。
+
+- subject 行 ≤ 50 字符（至多 72），用祈使句，结尾不加句号；概括提交做了什么。
+- body 解释为什么这样改：动机、约束、取舍等 diff 里看不出来的信息；
+  diff 本身能读出的内容不重复写。
