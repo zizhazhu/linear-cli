@@ -15,6 +15,9 @@
 
 | 条目 | 说明 |
 |------|------|
-| `app.py` | typer app 定义与入口函数 `main` |
+| `app.py` | typer app 定义与入口函数 `main`；在此挂载各子命令 |
+| `api.py` | Linear GraphQL 客户端（query/mutation + httpx） |
+| `config.py` | 配置路径解析（`LINEAR_CONFIG_PATH` → XDG → `~/.config`）与凭据读写 |
+| `login.py` | `login` 命令：验证 API key 并保存凭据 |
 | `__main__.py` | 支持 `python -m linear_cli` 执行 |
 | `__init__.py` | 导出 `app`、`main`，控制公开 API |
