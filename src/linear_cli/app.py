@@ -1,7 +1,7 @@
 import typer
 
 app = typer.Typer(
-    name="linear-cli",
+    name="linear",
     help="Linear 命令行工具。",
     no_args_is_help=True,
 )
