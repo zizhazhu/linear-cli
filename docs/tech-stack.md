@@ -61,7 +61,18 @@ click 的零依赖优势在这个薄 CLI 中不构成决定性因素。
 
 ### 认证
 
-Personal API Key，从环境变量或 `~/.config/linear-cli/config.toml` 读取。
+Personal API Key，从环境变量 `LINEAR_API_KEY` 或配置文件读取。
+
+配置文件路径按以下优先级解析：
+
+1. `LINEAR_CONFIG_PATH` 环境变量（最高优先，用于测试隔离与临时切换身份）
+2. `platformdirs.user_config_path("linear-cli")` 给出的平台标准目录：
+   - Linux：`$XDG_CONFIG_HOME/linear-cli`，未设置时回落 `~/.config/linear-cli`
+   - Windows：`%APPDATA%\linear-cli`
+   - macOS：`~/Library/Application Support/linear-cli`
+
+跨平台差异交给 `platformdirs` 保证（库自带各平台测试），本项目只测试
+`LINEAR_CONFIG_PATH` 覆盖层与 Linux 下的 XDG/回落行为。
 
 ## 依赖清单
 
@@ -70,3 +81,4 @@ Personal API Key，从环境变量或 `~/.config/linear-cli/config.toml` 读取�
 | `typer` | CLI 框架（自带 rich 依赖） |
 | `httpx` | HTTP 客户端，发送 GraphQL 请求 |
 | `rich` | 终端富文本渲染（typer 间接依赖，显式声明便于直接使用） |
+| `platformdirs` | 跨平台用户配置目录解析（Linux XDG / Windows APPDATA / macOS） |

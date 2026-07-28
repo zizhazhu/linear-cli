@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 from conftest import (
     FAKE_API_KEY,
@@ -79,3 +80,36 @@ def test_login_overwrites_existing_config(config_path: Path) -> None:
     content = config_path.read_text()
     assert FAKE_API_KEY in content
     assert old_key not in content
+
+
+@respx.mock
+def test_login_without_config_path_env_uses_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 未设 LINEAR_CONFIG_PATH 时，写入默认路径 $XDG_CONFIG_HOME/linear-cli/config.toml
+    monkeypatch.delenv("LINEAR_CONFIG_PATH", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
+
+    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
+
+    assert result.exit_code == 0
+    default_config = tmp_path / "linear-cli" / "config.toml"
+    assert FAKE_API_KEY in default_config.read_text()
+
+
+@respx.mock
+def test_login_without_xdg_config_home_falls_back_to_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # LINEAR_CONFIG_PATH 与 XDG_CONFIG_HOME 均未设置时，回落到 ~/.config/linear-cli/config.toml
+    monkeypatch.delenv("LINEAR_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
+
+    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
+
+    assert result.exit_code == 0
+    fallback_config = tmp_path / ".config" / "linear-cli" / "config.toml"
+    assert FAKE_API_KEY in fallback_config.read_text()
