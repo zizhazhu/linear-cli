@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -86,7 +87,7 @@ def test_login_overwrites_existing_config(config_path: Path) -> None:
 def test_login_without_config_path_env_uses_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # 未设 LINEAR_CONFIG_PATH 时，写入默认路径 $XDG_CONFIG_HOME/linear-cli/config.toml
+    # 未设 LINEAR_CONFIG_PATH 时，写入 $XDG_CONFIG_HOME/linear-cli/config.toml
     monkeypatch.delenv("LINEAR_CONFIG_PATH", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
@@ -102,10 +103,12 @@ def test_login_without_config_path_env_uses_default(
 def test_login_without_xdg_config_home_falls_back_to_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # LINEAR_CONFIG_PATH 与 XDG_CONFIG_HOME 均未设置时，回落到 ~/.config/linear-cli/config.toml
+    # LINEAR_CONFIG_PATH 与 XDG_CONFIG_HOME 均未设置时，所有平台统一回落到
+    # ~/.config/linear-cli/config.toml；重定向 home 的变量因平台而异
+    # （Windows 读 USERPROFILE，POSIX 读 HOME）
     monkeypatch.delenv("LINEAR_CONFIG_PATH", raising=False)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE" if sys.platform == "win32" else "HOME", str(tmp_path))
     respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
 
     result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
