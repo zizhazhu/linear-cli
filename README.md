@@ -32,7 +32,7 @@ TES-123 标题
 正文
 
 $ linear issue view TES-123 --json
-{"identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123", "title": "标题", "description": "正文"}
+{"id": "258773fc-...", "identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123", "title": "标题", "description": "正文"}
 ```
 
 ## 配置
