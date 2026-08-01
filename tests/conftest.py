@@ -34,6 +34,57 @@ UNAUTHORIZED_RESPONSE = {
     ]
 }
 
+# 与 issue 相关 GraphQL 操作的样例响应
+TEAMS_RESPONSE = {
+    "data": {
+        "teams": {
+            "nodes": [
+                {"id": "team-id-tes", "key": "TES", "name": "Test"},
+            ]
+        }
+    }
+}
+
+# teams 响应里没有目标缩写（用于不存在的 Team 反例）
+TEAMS_NO_MATCH_RESPONSE = {
+    "data": {
+        "teams": {
+            "nodes": [
+                {"id": "team-id-abc", "key": "ABC", "name": "Other"},
+            ]
+        }
+    }
+}
+
+ISSUE = {
+    "identifier": "TES-123",
+    "url": "https://linear.app/acme/issue/TES-123",
+    "title": "Test issue",
+    "description": "Body line 1\nBody line 2",
+}
+
+CREATE_ISSUE_RESPONSE = {
+    "data": {"issueCreate": {"success": True, "issue": ISSUE}}
+}
+
+ISSUE_RESPONSE = {"data": {"issue": ISSUE}}
+
+GRAPHQL_ERROR_RESPONSE = {
+    "errors": [
+        {"message": "Record not found", "extensions": {"code": "RECORD_NOT_FOUND"}},
+        {"message": "Secondary error message", "extensions": {}},
+    ]
+}
+
+ACCOUNT_ERROR_RESPONSE = {
+    "errors": [
+        {
+            "message": "Authentication required, not authenticated",
+            "extensions": {"code": "AUTHENTICATION_ERROR"},
+        }
+    ]
+}
+
 
 @pytest.fixture
 def config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:

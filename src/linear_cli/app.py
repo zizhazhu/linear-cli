@@ -1,5 +1,6 @@
 import typer
 
+from linear_cli.issue import issue_app
 from linear_cli.login import login
 
 app = typer.Typer(
@@ -15,6 +16,7 @@ def callback() -> None:
 
 
 app.command()(login)
+app.add_typer(issue_app)
 
 
 def main() -> None:
