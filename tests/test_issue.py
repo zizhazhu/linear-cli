@@ -260,11 +260,13 @@ def test_create_view_roundtrip_real_api(config_path) -> None:
     save_api_key(config_path, api_key)
     run_id = uuid.uuid4().hex[:8]
     title = f"cli-roundtrip-{run_id}"
+    # 注意：无序列表用 `* ` 而非 `- `——Linear 服务端会把 `- ` 规范化为 `* `，
+    # 其余 Markdown（标题/加粗/引用）与 fenced code block 内空白均逐字保留。
     body = (
         "首行\n"
         "\n"
-        "- 列表项一\n"
-        "- 列表项二\n"
+        "* 列表项一\n"
+        "* 列表项二\n"
         "\n"
         "```python\n"
         "def f():\n"
@@ -290,14 +292,15 @@ def test_create_view_roundtrip_real_api(config_path) -> None:
         view_result = runner.invoke(app, ["issue", "view", identifier, "--json"])
         assert view_result.exit_code == 0, view_result.stderr
         read_back = json.loads(view_result.output)
+        issue_uuid = read_back["id"]
         assert read_back["title"] == title
         assert read_back["description"] == body
     except Exception:
         # 断言失败保留现场，不归档
         raise
 
-    # 全部断言通过后才归档（可逆，URL 仍可人工查证）
-    archive_issue(api_key, identifier)
+    # 全部断言通过后才归档（可逆，URL 仍可人工查证）；issueArchive 接收 UUID 而非标识
+    archive_issue(api_key, issue_uuid)
 
 
 def test_view_nonexistent_identifier_real_api(config_path) -> None:
@@ -309,4 +312,4 @@ def test_view_nonexistent_identifier_real_api(config_path) -> None:
     result = runner.invoke(app, ["issue", "view", "TES-999999"])
 
     assert result.exit_code != 0
-    assert "Record not found" in result.stderr
+    assert "Entity not found: Issue" in result.stderr

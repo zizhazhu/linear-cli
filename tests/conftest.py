@@ -57,6 +57,7 @@ TEAMS_NO_MATCH_RESPONSE = {
 }
 
 ISSUE = {
+    "id": "a1b2c3d4-1111-2222-3333-444455556666",
     "identifier": "TES-123",
     "url": "https://linear.app/acme/issue/TES-123",
     "title": "Test issue",

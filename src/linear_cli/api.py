@@ -33,6 +33,7 @@ mutation IssueCreate($teamId: String!, $title: String!, $description: String) {
   ) {
     success
     issue {
+      id
       identifier
       url
       title
@@ -45,6 +46,7 @@ mutation IssueCreate($teamId: String!, $title: String!, $description: String) {
 _ISSUE_QUERY = """
 query Issue($id: String!) {
   issue(id: $id) {
+    id
     identifier
     url
     title
@@ -138,6 +140,7 @@ def fetch_issue(api_key: str, issue_id: str) -> dict | None:
 
 
 def archive_issue(api_key: str, issue_id: str) -> None:
-    """归档一条 issue（可逆）。供测试代码在断言通过后清理。"""
+    """归档一条 issue（可逆）。``issue_id`` 为 issue 的 UUID（``id`` 字段），
+    不是 ``TES-123`` 形式的标识。供测试代码在断言通过后清理。"""
     data = _post(api_key, _ARCHIVE_ISSUE_MUTATION, {"id": issue_id})
     data["data"]["issueArchive"]["success"]
