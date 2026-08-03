@@ -27,7 +27,7 @@ _ACCOUNT_ERROR_KEYWORDS = ("AUTHENTICATION", "AUTHORIZATION", "RATE_LIMIT")
 def _load_api_key_or_exit() -> str:
     """按优先级解析 API key（env → 配置文件）；全部落空时提示并以退出码 1 退出。"""
     try:
-        return resolve_api_key(None)
+        return resolve_api_key()
     except MissingApiKeyError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None

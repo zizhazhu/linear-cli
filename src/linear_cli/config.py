@@ -50,14 +50,12 @@ class MissingApiKeyError(RuntimeError):
     """所有凭据来源均未提供 Linear API key 时抛出。"""
 
 
-def resolve_api_key(cli_key: str | None) -> str:
-    """按优先级解析 API key：CLI 参数 → 环境变量 → ``.env`` → 配置文件。
+def resolve_api_key() -> str:
+    """按优先级解析 API key：环境变量 → ``.env`` → 配置文件。
 
     ``.env`` 经 ``dotenv_values`` 只读解析，不注入 ``os.environ``。
-    四者全空时抛 :class:`MissingApiKeyError`。
+    三者全空时抛 :class:`MissingApiKeyError`。
     """
-    if cli_key:
-        return cli_key
     if env_key := os.environ.get("LINEAR_API_KEY"):
         return env_key
     if dotenv_key := dotenv_values(find_dotenv(usecwd=True)).get("LINEAR_API_KEY"):
