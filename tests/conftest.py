@@ -91,11 +91,16 @@ ACCOUNT_ERROR_RESPONSE = {
 def config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Redirect credential storage to a temp file, return its path.
 
-    同时清除 ``LINEAR_API_KEY``：离线测试的凭据一律来自配置文件，
-    开发者本机 env/.env 里的真实 key 不会混进请求。
+    凭据环境全面隔离：
+    - ``LINEAR_CONFIG_PATH`` 指向临时配置文件；
+    - 清除 ``LINEAR_API_KEY`` 环境变量；
+    - chdir 到临时目录，``.env`` 向上查找不会碰到开发者真实的 ``.env``。
+
+    离线测试的凭据因此确定来自临时配置文件。
     真实 API 测试用 ``real_api.require_real_api_key`` 显式取回。
     """
     path = tmp_path / "config.toml"
     monkeypatch.setenv("LINEAR_CONFIG_PATH", str(path))
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
     yield path

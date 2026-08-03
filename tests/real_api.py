@@ -1,23 +1,29 @@
 """真实 API 契约测试的共享设施。
 
-``.env`` 由本模块显式加载（从工作目录向上查找），不依赖被测代码导入时
-的副作用；key 在导入时快照，此后 conftest 的环境隔离不影响取值。
+``.env`` 由本模块显式读取（``dotenv_values``，从工作目录向上查找，不写入
+``os.environ``），不依赖被测代码导入时的副作用；key 在导入时快照，
+此后 conftest 的环境隔离不影响取值。
 """
 
 import os
 from pathlib import Path
 
 import pytest
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv
 
 from linear_cli.config import save_api_key
 
-load_dotenv(find_dotenv(usecwd=True))
 
-# 导入时快照：shell 环境变量优先，.env 补缺（load_dotenv 不覆盖已有变量）。
-# conftest 的 config_path fixture 会在每个测试前清除 LINEAR_API_KEY，
-# 故必须在 fixture 生效前完成取值。
-_REAL_API_KEY = os.environ.get("LINEAR_API_KEY")
+def _snapshot_real_api_key() -> str | None:
+    """shell 环境变量优先，``.env`` 补缺；只读，不污染环境变量。"""
+    if key := os.environ.get("LINEAR_API_KEY"):
+        return key
+    return dotenv_values(find_dotenv(usecwd=True)).get("LINEAR_API_KEY")
+
+
+# 导入时快照：conftest 的 config_path fixture 会在每个测试前清除
+# LINEAR_API_KEY，故必须在 fixture 生效前完成取值。
+_REAL_API_KEY = _snapshot_real_api_key()
 
 
 def require_real_api_key(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
