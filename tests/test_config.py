@@ -6,32 +6,36 @@ from conftest import FAKE_API_KEY
 
 from linear_cli.config import (
     MissingApiKeyError,
-    load_api_key,
+    read_api_key_from_config,
     resolve_api_key,
-    save_api_key,
+    write_api_key_to_config,
 )
 
 
-def test_load_api_key_returns_none_when_file_missing(tmp_path: Path) -> None:
+def test_read_api_key_from_config_returns_none_when_file_missing(
+    tmp_path: Path,
+) -> None:
     # 配置文件不存在时应返回 None，而不是抛异常
-    assert load_api_key(tmp_path / "config.toml") is None
+    assert read_api_key_from_config(tmp_path / "config.toml") is None
 
 
-def test_load_api_key_returns_none_when_key_absent(tmp_path: Path) -> None:
+def test_read_api_key_from_config_returns_none_when_key_absent(
+    tmp_path: Path,
+) -> None:
     # 文件存在但没有 api_key 字段时返回 None
     path = tmp_path / "config.toml"
     path.write_text('other = "value"\n')
 
-    assert load_api_key(path) is None
+    assert read_api_key_from_config(path) is None
 
 
-def test_save_then_load_roundtrips_api_key(tmp_path: Path) -> None:
-    # save_api_key 写入的 TOML 应能被 load_api_key 原样读回
+def test_write_then_read_roundtrips_api_key(tmp_path: Path) -> None:
+    # write_api_key_to_config 写入的 TOML 应能被 read_api_key_from_config 原样读回
     path = tmp_path / "nested" / "config.toml"
 
-    save_api_key(path, FAKE_API_KEY)
+    write_api_key_to_config(path, FAKE_API_KEY)
 
-    assert load_api_key(path) == FAKE_API_KEY
+    assert read_api_key_from_config(path) == FAKE_API_KEY
 
 
 def test_resolve_prefers_env_over_config(
@@ -43,7 +47,7 @@ def test_resolve_prefers_env_over_config(
     """
     env_key = "lin_api_from_env"
     monkeypatch.setenv("LINEAR_API_KEY", env_key)
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
 
     assert resolve_api_key() == env_key
 
@@ -88,7 +92,7 @@ def test_resolve_prefers_env_file_over_config(
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("LINEAR_API_KEY=lin_api_from_dotenv\n")
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
 
     assert resolve_api_key() == "lin_api_from_dotenv"
 
@@ -102,7 +106,7 @@ def test_resolve_falls_back_to_config(
     """
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
 
     assert resolve_api_key() == FAKE_API_KEY
 

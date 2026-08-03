@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from linear_cli import app
 from linear_cli.api import archive_issue
-from linear_cli.config import save_api_key
+from linear_cli.config import write_api_key_to_config
 
 runner = CliRunner()
 
@@ -108,7 +108,7 @@ def test_view_resolves_env_key_without_config_file(config_path, monkeypatch) -> 
 @respx.mock
 def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
     # teams 响应里没有 ZZZ：报错包含缩写原文，且不发 issueCreate 调用
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Teams": httpx.Response(200, json=TEAMS_NO_MATCH_RESPONSE)})
 
     result = runner.invoke(
@@ -126,7 +126,7 @@ def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
 
 @respx.mock
 def test_create_success_outputs_identifier_and_url(config_path) -> None:
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
             "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
@@ -147,7 +147,7 @@ def test_create_success_outputs_identifier_and_url(config_path) -> None:
 @respx.mock
 def test_create_passes_body_verbatim_to_api(config_path) -> None:
     # --body 不得被裁剪/改写/规范化：请求变量里的 description 必须与输入严格一致
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
             "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
@@ -176,7 +176,7 @@ def test_create_passes_body_verbatim_to_api(config_path) -> None:
 
 @respx.mock
 def test_create_json_output(config_path) -> None:
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
             "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
@@ -198,7 +198,7 @@ def test_create_json_output(config_path) -> None:
 
 @respx.mock
 def test_view_success_reads_back_title_and_body(config_path) -> None:
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-123"])
@@ -210,7 +210,7 @@ def test_view_success_reads_back_title_and_body(config_path) -> None:
 
 @respx.mock
 def test_view_json_returns_full_issue(config_path) -> None:
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-123", "--json"])
@@ -222,7 +222,7 @@ def test_view_json_returns_full_issue(config_path) -> None:
 @respx.mock
 def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
     # Linear 返回 errors 时，逐条 message 原文输出到 stderr，不翻译不裁剪
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=GRAPHQL_ERROR_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-999"])
@@ -235,7 +235,7 @@ def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
 @respx.mock
 def test_view_account_error_dumps_raw_body(config_path) -> None:
     # 认证/授权/限流等账号级 GraphQL 错误：message 原文之外再贴原始响应正文
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ACCOUNT_ERROR_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-999"])
@@ -248,7 +248,7 @@ def test_view_account_error_dumps_raw_body(config_path) -> None:
 @respx.mock
 def test_view_http_error_prints_raw_body(config_path) -> None:
     # HTTP 非 2xx（如限流 429）：把原始响应正文贴到 stderr
-    save_api_key(config_path, FAKE_API_KEY)
+    write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
             "query Issue": httpx.Response(

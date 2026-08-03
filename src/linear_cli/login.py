@@ -6,7 +6,7 @@ import httpx
 import typer
 
 from linear_cli.api import fetch_viewer
-from linear_cli.config import get_config_path, save_api_key
+from linear_cli.config import get_config_path, write_api_key_to_config
 
 
 def login(
@@ -33,7 +33,7 @@ def login(
         raise typer.Exit(1) from None
 
     config_path = get_config_path()
-    save_api_key(config_path, api_key)
+    write_api_key_to_config(config_path, api_key)
 
     if json_output:
         typer.echo(json.dumps(viewer))

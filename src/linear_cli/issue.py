@@ -24,8 +24,8 @@ issue_app = typer.Typer(
 _ACCOUNT_ERROR_KEYWORDS = ("AUTHENTICATION", "AUTHORIZATION", "RATE_LIMIT")
 
 
-def _load_api_key_or_exit() -> str:
-    """按优先级解析 API key（env → 配置文件）；全部落空时提示并以退出码 1 退出。"""
+def _resolve_api_key_or_exit() -> str:
+    """按优先级解析 API key（env → .env → 配置文件）；全部落空时提示并以退出码 1 退出。"""
     try:
         return resolve_api_key()
     except MissingApiKeyError as exc:
@@ -73,7 +73,7 @@ def create(
     ),
 ) -> None:
     """创建一条 issue 并返回标识与网页 URL。"""
-    api_key = _load_api_key_or_exit()
+    api_key = _resolve_api_key_or_exit()
     try:
         issue = create_issue(api_key, team, title, body)
     except TeamNotFoundError as exc:
@@ -98,7 +98,7 @@ def view(
     ),
 ) -> None:
     """按标识读回一条 issue（无需 Team 参数）。"""
-    api_key = _load_api_key_or_exit()
+    api_key = _resolve_api_key_or_exit()
     try:
         issue = fetch_issue(api_key, issue_id)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:

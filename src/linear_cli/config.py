@@ -31,13 +31,13 @@ def get_config_path() -> Path:
     return base / APP_NAME / CONFIG_FILENAME
 
 
-def save_api_key(path: Path, api_key: str) -> None:
+def write_api_key_to_config(path: Path, api_key: str) -> None:
     """将 API key 以 TOML 格式写入配置文件，覆盖已有内容。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f'api_key = "{api_key}"\n')
 
 
-def load_api_key(path: Path) -> str | None:
+def read_api_key_from_config(path: Path) -> str | None:
     """从配置文件读取 API key；文件不存在时返回 ``None``。"""
     if not path.exists():
         return None
@@ -60,7 +60,7 @@ def resolve_api_key() -> str:
         return env_key
     if dotenv_key := dotenv_values(find_dotenv(usecwd=True)).get("LINEAR_API_KEY"):
         return dotenv_key
-    config_key = load_api_key(get_config_path())
+    config_key = read_api_key_from_config(get_config_path())
     if config_key:
         return config_key
     raise MissingApiKeyError(

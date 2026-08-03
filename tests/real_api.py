@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from dotenv import dotenv_values, find_dotenv
 
-from linear_cli.config import save_api_key
+from linear_cli.config import write_api_key_to_config
 
 
 def _snapshot_real_api_key() -> str | None:
@@ -39,5 +39,5 @@ def require_real_api_key(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     if not _REAL_API_KEY:
         pytest.skip("LINEAR_API_KEY 未设置（env 或 .env），跳过真实 API 测试")
     monkeypatch.setenv("LINEAR_API_KEY", _REAL_API_KEY)
-    save_api_key(config_path, _REAL_API_KEY)
+    write_api_key_to_config(config_path, _REAL_API_KEY)
     return _REAL_API_KEY
