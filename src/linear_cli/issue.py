@@ -12,7 +12,7 @@ from linear_cli.api import (
     create_issue,
     fetch_issue,
 )
-from linear_cli.config import get_config_path, load_api_key
+from linear_cli.config import MissingApiKeyError, resolve_api_key
 
 issue_app = typer.Typer(
     name="issue",
@@ -25,12 +25,12 @@ _ACCOUNT_ERROR_KEYWORDS = ("AUTHENTICATION", "AUTHORIZATION", "RATE_LIMIT")
 
 
 def _load_api_key_or_exit() -> str:
-    """读取 API key；未登录时提示先执行 ``linear login``，以退出码 1 退出。"""
-    api_key = load_api_key(get_config_path())
-    if api_key is None:
-        typer.echo("error: 未登录，请先运行 `linear login`。", err=True)
-        raise typer.Exit(1)
-    return api_key
+    """按优先级解析 API key（env → 配置文件）；全部落空时提示并以退出码 1 退出。"""
+    try:
+        return resolve_api_key(None)
+    except MissingApiKeyError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
 
 
 def _is_account_error(errors: list[dict]) -> bool:
