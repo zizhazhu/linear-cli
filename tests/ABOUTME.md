@@ -31,6 +31,6 @@
 | `real_api.py` | 真实 API 契约测试的共享设施：自行读取 `.env`（`dotenv_values`，不污染环境变量），`require_real_api_key` 把同一把 key 同时钉进环境变量与配置文件，缺失时 skip |
 | `test_app.py` | CLI 入口冒烟测试：`--help` 与无参数时的行为 |
 | `test_api.py` | API 客户端测试：成功返回 viewer、HTTP 错误抛 `HTTPStatusError`、网络错误原样传播 |
-| `test_config.py` | 配置读写纯函数测试：`load_api_key` 缺文件/缺字段返回 `None`、保存读取回环；`resolve_api_key` 凭据来源优先级（CLI 参数 → 环境变量 → `.env` → 配置文件，全落空抛 `MissingApiKeyError`；`.env` 是显式数据源，解析不注入环境变量） |
+| `test_config.py` | 配置读写纯函数测试：`load_api_key` 缺文件/缺字段返回 `None`、保存读取回环；`resolve_api_key` 凭据来源优先级（环境变量 → `.env` → 配置文件，全落空抛 `MissingApiKeyError`；`.env` 是显式数据源，解析不注入环境变量） |
 | `test_login.py` | `linear login` 命令测试：有效/无效 key、`--json` 输出、prompt 入口、覆盖已有凭据、配置路径三级优先（`LINEAR_CONFIG_PATH` → XDG → `~/.config` 回落） |
 | `test_issue.py` | `issue create/view` 测试：必填参数、未登录、未知 Team、GraphQL/HTTP 错误输出；env 凭据优先于配置文件（离线）；2 条真实 API 测试（create→view round-trip、view 不存在标识）凭据由 `real_api.py` 统一注入，缺失时 skip |
