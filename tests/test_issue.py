@@ -1,5 +1,4 @@
 import json
-import os
 import uuid
 
 import httpx
@@ -16,6 +15,7 @@ from conftest import (
     TEAMS_NO_MATCH_RESPONSE,
     TEAMS_RESPONSE,
 )
+from real_api import require_real_api_key
 from typer.testing import CliRunner
 
 from linear_cli import app
@@ -91,6 +91,21 @@ def test_view_not_logged_in_errors_without_api(config_path) -> None:
 
 
 @respx.mock
+def test_view_resolves_env_key_without_config_file(config_path, monkeypatch) -> None:
+    """Given 配置文件不存在，但 LINEAR_API_KEY 环境变量提供 key
+    When view 一个 issue
+    Then 请求携带环境变量中的 key，而非报「未登录」
+    """
+    monkeypatch.setenv("LINEAR_API_KEY", FAKE_API_KEY)
+    _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "view", "TES-123"])
+
+    assert result.exit_code == 0, result.stderr
+    assert respx.calls[0].request.headers["Authorization"] == FAKE_API_KEY
+
+
+@respx.mock
 def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
     # teams 响应里没有 ZZZ：报错包含缩写原文，且不发 issueCreate 调用
     save_api_key(config_path, FAKE_API_KEY)
@@ -155,6 +170,8 @@ def test_create_passes_body_verbatim_to_api(config_path) -> None:
     variables = json.loads(create_call.request.content)["variables"]
     assert variables["title"] == "My title"
     assert variables["description"] == body
+    # 凭据来自配置文件（conftest 已隔离 LINEAR_API_KEY 环境变量）
+    assert create_call.request.headers["Authorization"] == FAKE_API_KEY
 
 
 @respx.mock
@@ -246,18 +263,12 @@ def test_view_http_error_prints_raw_body(config_path) -> None:
     assert "Rate limit exceeded" in result.stderr
 
 
-def _real_api_key() -> str:
-    key = os.environ.get("LINEAR_API_KEY")
-    if not key:
-        pytest.skip("LINEAR_API_KEY 未设置，跳过真实 API 测试")
-    return key
-
-
-def test_create_view_roundtrip_real_api(config_path) -> None:
-    """真实 API：create 一条带 run 标识、含换行/Markdown/保留空白的 issue，
-    立即用返回标识 view 读回，标题与正文严格一致；全部断言通过后归档。"""
-    api_key = _real_api_key()
-    save_api_key(config_path, api_key)
+def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key 与一段含换行/Markdown/保留空白的正文
+    When create 一条带 run 标识的 issue，并立即用返回标识 view 读回
+    Then 标题与正文逐字一致；全部断言通过后归档（失败则保留现场不归档）
+    """
+    api_key = require_real_api_key(config_path, monkeypatch)
     run_id = uuid.uuid4().hex[:8]
     title = f"cli-roundtrip-{run_id}"
     # 注意：无序列表用 `* ` 而非 `- `——Linear 服务端会把 `- ` 规范化为 `* `，
@@ -303,11 +314,12 @@ def test_create_view_roundtrip_real_api(config_path) -> None:
     archive_issue(api_key, issue_uuid)
 
 
-def test_view_nonexistent_identifier_real_api(config_path) -> None:
-    """真实 API：view 一个格式合法但不存在的标识，
-    stderr 包含 Linear 返回的 errors[].message 原文，退出码非 0。"""
-    api_key = _real_api_key()
-    save_api_key(config_path, api_key)
+def test_view_nonexistent_identifier_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key 与一个格式合法但不存在的标识
+    When view 该标识
+    Then stderr 包含 Linear 返回的 errors[].message 原文，退出码非 0
+    """
+    require_real_api_key(config_path, monkeypatch)
 
     result = runner.invoke(app, ["issue", "view", "TES-999999"])
 

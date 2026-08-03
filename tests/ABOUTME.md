@@ -27,9 +27,10 @@
 
 | 条目 | 说明 |
 |------|------|
-| `conftest.py` | 共享 fixture：fake API key、样例 GraphQL 响应（viewer/teams/issue/错误）、配置路径隔离（`LINEAR_CONFIG_PATH` → `tmp_path`） |
+| `conftest.py` | 共享 fixture：fake API key、样例 GraphQL 响应（viewer/teams/issue/错误）、配置路径隔离（`LINEAR_CONFIG_PATH` → `tmp_path`，并清除 `LINEAR_API_KEY` 使离线测试凭据确定走配置文件） |
+| `real_api.py` | 真实 API 契约测试的共享设施：自行加载 `.env`（不依赖被测代码的导入副作用），`require_real_api_key` 把同一把 key 同时钉进环境变量与配置文件，缺失时 skip |
 | `test_app.py` | CLI 入口冒烟测试：`--help` 与无参数时的行为 |
 | `test_api.py` | API 客户端测试：成功返回 viewer、HTTP 错误抛 `HTTPStatusError`、网络错误原样传播 |
 | `test_config.py` | 配置读写纯函数测试：`load_api_key` 缺文件/缺字段返回 `None`、保存读取回环；`resolve_api_key` 凭据来源优先级（CLI 参数 → `LINEAR_API_KEY` → 配置文件，全落空抛 `MissingApiKeyError`） |
 | `test_login.py` | `linear login` 命令测试：有效/无效 key、`--json` 输出、prompt 入口、覆盖已有凭据、配置路径三级优先（`LINEAR_CONFIG_PATH` → XDG → `~/.config` 回落） |
-| `test_issue.py` | `issue create/view` 测试：必填参数、未登录、未知 Team、GraphQL/HTTP 错误输出；2 条真实 API 测试（create→view round-trip、view 不存在标识）以 `LINEAR_API_KEY` 存在为前提，缺失时 skip |
+| `test_issue.py` | `issue create/view` 测试：必填参数、未登录、未知 Team、GraphQL/HTTP 错误输出；env 凭据优先于配置文件（离线）；2 条真实 API 测试（create→view round-trip、view 不存在标识）凭据由 `real_api.py` 统一注入，缺失时 skip |
