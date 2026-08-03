@@ -1,8 +1,17 @@
-"""配置文件路径解析与凭据持久化。"""
+"""配置文件路径解析与凭据持久化。
+
+导入时自动加载 ``.env`` 文件（从用户工作目录向上查找，不覆盖已有的
+shell 环境变量），使 ``LINEAR_API_KEY`` 等变量可在项目根目录的 ``.env``
+中配置。
+"""
 
 import os
 import tomllib
 from pathlib import Path
+
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv(usecwd=True))
 
 APP_NAME = "linear-cli"
 CONFIG_FILENAME = "config.toml"
@@ -37,3 +46,26 @@ def load_api_key(path: Path) -> str | None:
     with path.open("rb") as f:
         data = tomllib.load(f)
     return data.get("api_key")
+
+
+class MissingApiKeyError(RuntimeError):
+    """所有凭据来源均未提供 Linear API key 时抛出。"""
+
+
+def resolve_api_key(cli_key: str | None) -> str:
+    """按优先级解析 API key：CLI 参数 → ``LINEAR_API_KEY`` → 配置文件。
+
+    三者全空时抛 :class:`MissingApiKeyError`。
+    """
+    if cli_key:
+        return cli_key
+    env_key = os.environ.get("LINEAR_API_KEY")
+    if env_key:
+        return env_key
+    config_key = load_api_key(get_config_path())
+    if config_key:
+        return config_key
+    raise MissingApiKeyError(
+        "No Linear API key found; set LINEAR_API_KEY (env or .env) "
+        "or run `linear login`."
+    )
