@@ -1,17 +1,15 @@
-"""配置文件路径解析与凭据持久化。
+"""配置文件路径解析、凭据持久化与凭据来源解析。
 
-导入时自动加载 ``.env`` 文件（从用户工作目录向上查找，不覆盖已有的
-shell 环境变量），使 ``LINEAR_API_KEY`` 等变量可在项目根目录的 ``.env``
-中配置。
+``.env`` 是 :func:`resolve_api_key` 的显式数据源之一（从用户工作目录向上
+查找，只读取、不写入 ``os.environ``），使 ``LINEAR_API_KEY`` 可配置在
+项目根目录的 ``.env`` 中。
 """
 
 import os
 import tomllib
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(find_dotenv(usecwd=True))
+from dotenv import dotenv_values, find_dotenv
 
 APP_NAME = "linear-cli"
 CONFIG_FILENAME = "config.toml"
@@ -53,15 +51,17 @@ class MissingApiKeyError(RuntimeError):
 
 
 def resolve_api_key(cli_key: str | None) -> str:
-    """按优先级解析 API key：CLI 参数 → ``LINEAR_API_KEY`` → 配置文件。
+    """按优先级解析 API key：CLI 参数 → 环境变量 → ``.env`` → 配置文件。
 
-    三者全空时抛 :class:`MissingApiKeyError`。
+    ``.env`` 经 ``dotenv_values`` 只读解析，不注入 ``os.environ``。
+    四者全空时抛 :class:`MissingApiKeyError`。
     """
     if cli_key:
         return cli_key
-    env_key = os.environ.get("LINEAR_API_KEY")
-    if env_key:
+    if env_key := os.environ.get("LINEAR_API_KEY"):
         return env_key
+    if dotenv_key := dotenv_values(find_dotenv(usecwd=True)).get("LINEAR_API_KEY"):
+        return dotenv_key
     config_key = load_api_key(get_config_path())
     if config_key:
         return config_key
