@@ -7,3 +7,4 @@
 | 条目 | 说明 |
 |------|------|
 | `tech-stack.md` | 技术方案：语言选择、技术栈选型与理由 |
+| `command-design.md` | 命令设计：从 Linear MCP 推导的 CLI 命令面，后续实现的依据 |
