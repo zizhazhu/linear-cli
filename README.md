@@ -40,6 +40,17 @@ TES-123 标题
 正文
 ```
 
+## 列出 issue
+
+`list` 拉取工作区 issue，默认 50 条，输出 JSON 数组（每项为 view 字段集的子集）：
+
+```console
+$ linear issue list --limit 10
+[{"identifier": "TES-123", "title": "标题", "url": "https://linear.app/...", "state": {"name": "In Progress", "type": "started"}, "priority": 2, "assignee": {"name": "Name"}, "updatedAt": "2026-08-18T00:00:00.000Z"}, ...]
+```
+
+`--pretty` 以表格渲染。
+
 ## 配置
 
 配置文件路径按以下优先级解析（全平台统一）：
