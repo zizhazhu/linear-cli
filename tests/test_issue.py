@@ -217,26 +217,51 @@ def test_create_json_output(config_path) -> None:
 
 
 @respx.mock
-def test_view_success_reads_back_title_and_body(config_path) -> None:
+def test_view_defaults_to_full_json_output(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When 执行 issue view（不带任何输出 flag）
+    Then stdout 为单行完整 issue JSON：字段 GraphQL 命名，labels 拍平为名称
+    数组，creator 映射为 createdBy，parent 映射为 parentId，可空字段原样
+    为 null（不省略）
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-123"])
 
     assert result.exit_code == 0, result.stderr
-    assert "Test issue" in result.output
+    assert json.loads(result.output) == ISSUE
+
+
+@respx.mock
+def test_view_pretty_prints_human_readable(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When 执行 issue view --pretty
+    Then 输出人类可读格式：首行「标识 标题」，随后为正文原文
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "view", "TES-123", "--pretty"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "TES-123 Test issue" in result.output
     assert "Body line 1\nBody line 2" in result.output
 
 
 @respx.mock
-def test_view_json_returns_full_issue(config_path) -> None:
+def test_view_json_flag_removed_errors(config_path) -> None:
+    """Given JSON 已成为默认输出
+    When 仍传旧的 --json flag
+    Then typer 报用法错误（exit 2），不调用 API
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-123", "--json"])
 
-    assert result.exit_code == 0, result.stderr
-    assert json.loads(result.output) == ISSUE
+    assert result.exit_code == 2
+    assert not respx.calls
 
 
 @respx.mock
@@ -304,8 +329,10 @@ def test_view_http_error_prints_raw_body(config_path) -> None:
 
 def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
     """Given 真实 API key 与一段含换行/Markdown/保留空白的正文
-    When create 一条带 run 标识的 issue，并立即用返回标识 view 读回
-    Then 标题与正文逐字一致；全部断言通过后归档（失败则保留现场不归档）
+    When create 一条带 run 标识的 issue，并立即用返回标识 view 读回（默认 JSON）
+    Then 标题与正文逐字一致；读回满足 view 输出契约（identifier 一致、
+    state/priority/team/labels/时间戳字段格式正确）；全部断言通过后归档
+    （失败则保留现场不归档）
     """
     api_key = require_real_api_key(config_path, monkeypatch)
     run_id = uuid.uuid4().hex[:8]
@@ -339,12 +366,22 @@ def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert created["url"].startswith("https://linear.app/")
         assert identifier in created["url"]
 
-        view_result = runner.invoke(app, ["issue", "view", identifier, "--json"])
+        view_result = runner.invoke(app, ["issue", "view", identifier])
         assert view_result.exit_code == 0, view_result.stderr
         read_back = json.loads(view_result.output)
         issue_uuid = read_back["id"]
         assert read_back["title"] == title
         assert read_back["description"] == body
+        # view 输出契约：字段格式（值因 issue 而异，只断言结构）
+        assert read_back["identifier"] == identifier
+        assert isinstance(read_back["state"]["name"], str)
+        assert isinstance(read_back["state"]["type"], str)
+        assert isinstance(read_back["priority"], int)
+        assert isinstance(read_back["priorityLabel"], str)
+        assert read_back["team"]["key"] == "TES"
+        assert isinstance(read_back["labels"], list)
+        assert "assignee" in read_back  # 可空，原样为 null
+        assert read_back["createdAt"].endswith("Z")
     except Exception:
         # 断言失败保留现场，不归档
         raise

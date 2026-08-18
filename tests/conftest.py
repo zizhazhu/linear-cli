@@ -57,19 +57,68 @@ TEAMS_NO_MATCH_RESPONSE = {
     }
 }
 
+# GraphQL 响应里 issue 节点的原始形态：嵌套对象、labels 为 nodes 连接
+ISSUE_NODE = {
+    "id": "a1b2c3d4-1111-2222-3333-444455556666",
+    "identifier": "TES-123",
+    "title": "Test issue",
+    "description": "Body line 1\nBody line 2",
+    "url": "https://linear.app/acme/issue/TES-123",
+    "branchName": "test-user/tes-123-test-issue",
+    "state": {"id": "state-id-started", "name": "In Progress", "type": "started"},
+    "priority": 2,
+    "priorityLabel": "High",
+    "estimate": None,
+    "assignee": {"id": "user-id-1", "name": "Test User"},
+    "creator": {"id": "user-id-2", "name": "Creator User"},
+    "team": {"id": "team-id-tes", "key": "TES", "name": "Test"},
+    "labels": {"nodes": [{"name": "bug"}, {"name": "cli"}]},
+    "project": None,
+    "parent": None,
+    "createdAt": "2026-08-01T00:00:00.000Z",
+    "updatedAt": "2026-08-02T00:00:00.000Z",
+    "archivedAt": None,
+    "completedAt": None,
+    "startedAt": "2026-08-01T12:00:00.000Z",
+    "canceledAt": None,
+    "dueDate": None,
+}
+
+# CLI view 的输出契约形态（对 ISSUE_NODE 的变换）：
+# labels 拍平为名称数组、creator 映射为 createdBy、parent 映射为 parentId，
+# 可空字段原样为 null
 ISSUE = {
     "id": "a1b2c3d4-1111-2222-3333-444455556666",
     "identifier": "TES-123",
-    "url": "https://linear.app/acme/issue/TES-123",
     "title": "Test issue",
     "description": "Body line 1\nBody line 2",
+    "url": "https://linear.app/acme/issue/TES-123",
+    "branchName": "test-user/tes-123-test-issue",
+    "state": {"id": "state-id-started", "name": "In Progress", "type": "started"},
+    "priority": 2,
+    "priorityLabel": "High",
+    "estimate": None,
+    "assignee": {"id": "user-id-1", "name": "Test User"},
+    "createdBy": {"id": "user-id-2", "name": "Creator User"},
+    "team": {"id": "team-id-tes", "key": "TES", "name": "Test"},
+    "labels": ["bug", "cli"],
+    "project": None,
+    "parentId": None,
+    "createdAt": "2026-08-01T00:00:00.000Z",
+    "updatedAt": "2026-08-02T00:00:00.000Z",
+    "archivedAt": None,
+    "completedAt": None,
+    "startedAt": "2026-08-01T12:00:00.000Z",
+    "canceledAt": None,
+    "dueDate": None,
 }
 
+# create 域尚未迁移，mutation 响应暂沿用输出形态（只取 identifier/url）
 CREATE_ISSUE_RESPONSE = {
     "data": {"issueCreate": {"success": True, "issue": ISSUE}}
 }
 
-ISSUE_RESPONSE = {"data": {"issue": ISSUE}}
+ISSUE_RESPONSE = {"data": {"issue": ISSUE_NODE}}
 
 GRAPHQL_ERROR_RESPONSE = {
     "errors": [
