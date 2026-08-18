@@ -226,6 +226,38 @@ CYCLES_RESPONSE = {
     }
 }
 
+# GraphQL 响应里 comment 节点的原始形态（issue.comments 连接的节点）
+COMMENT_NODE = {
+    "id": "comment-id-1",
+    "body": "进度汇报",
+    "user": {"id": "user-id-1", "name": "Test User"},
+    "createdAt": "2026-08-01T10:00:00.000Z",
+    "updatedAt": "2026-08-01T10:00:00.000Z",
+}
+
+# CLI comment list 的输出契约形态：节点原样（字段集即契约），数组输出
+ISSUE_COMMENTS_RESPONSE = {"data": {"issue": {"comments": {"nodes": [COMMENT_NODE]}}}}
+
+EMPTY_ISSUE_COMMENTS_RESPONSE = {
+    "data": {"issue": {"comments": {"nodes": []}}}
+}
+
+NO_ISSUE_COMMENTS_RESPONSE = {"data": {"issue": None}}
+
+CREATE_COMMENT_RESPONSE = {
+    "data": {
+        "commentCreate": {
+            "success": True,
+            "comment": {
+                "id": "comment-id-1",
+                "url": "https://linear.app/acme/issue/TES-123#comment-comment-id-1",
+            },
+        }
+    }
+}
+
+DELETE_COMMENT_RESPONSE = {"data": {"commentDelete": {"success": True}}}
+
 # issues 列表查询的样例响应：两条 issue，其二 assignee 为 null
 ISSUE_LIST_NODES = [
     {

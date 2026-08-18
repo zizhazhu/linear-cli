@@ -6,18 +6,24 @@ import pytest
 import respx
 from conftest import (
     ACCOUNT_ERROR_RESPONSE,
+    COMMENT_NODE,
+    CREATE_COMMENT_RESPONSE,
     CREATE_ISSUE_RESPONSE,
     CYCLES_RESPONSE,
+    DELETE_COMMENT_RESPONSE,
+    EMPTY_ISSUE_COMMENTS_RESPONSE,
     EMPTY_ISSUES_RESPONSE,
     FAKE_API_KEY,
     GRAPHQL_ERROR_RESPONSE,
     GRAPHQL_URL,
     ISSUE,
+    ISSUE_COMMENTS_RESPONSE,
     ISSUE_LABELS_RESPONSE,
     ISSUE_LIST,
     ISSUE_RESPONSE,
     ISSUE_UPDATE_RESPONSE,
     ISSUES_RESPONSE,
+    NO_ISSUE_COMMENTS_RESPONSE,
     PROJECTS_RESPONSE,
     TEAM_STATES_RESPONSE,
     TEAMS_NO_MATCH_RESPONSE,
@@ -27,6 +33,7 @@ from conftest import (
     VIEWER_RESPONSE,
     error_envelope,
 )
+from real_api import require_real_api_key
 from real_api import require_real_api_key
 from typer.testing import CliRunner
 
@@ -1321,3 +1328,291 @@ def test_update_roundtrip_real_api(config_path, monkeypatch) -> None:
         raise
 
     archive_issue(api_key, updated["id"])
+
+
+# ---------------------------------------------------------------- comment
+
+
+@respx.mock
+def test_comment_list_not_logged_in_errors_without_api(config_path) -> None:
+    """Given 配置文件不存在（未登录）
+    When 执行 issue comment list
+    Then 退出码 1，stderr 输出 type 为 auth 的错误信封，且不调用 API
+    """
+    result = runner.invoke(app, ["issue", "comment", "list", "TES-123"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "auth"
+    assert "linear login" in "; ".join(error["messages"])
+    assert not respx.calls
+
+
+@respx.mock
+def test_comment_list_outputs_comment_array(config_path) -> None:
+    """Given 已登录且 issue 有一条评论
+    When 执行 issue comment list TES-123
+    Then stdout 为 JSON 数组，逐项为 id/body/user{id,name}/createdAt/
+    updatedAt（按创建时间序，由服务端 orderBy 保证）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {"query IssueComments(": httpx.Response(200, json=ISSUE_COMMENTS_RESPONSE)}
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "list", "TES-123"])
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == [COMMENT_NODE]
+
+
+@respx.mock
+def test_comment_list_empty_outputs_empty_array(config_path) -> None:
+    """Given 已登录且 issue 无评论
+    When 执行 issue comment list
+    Then stdout 为空 JSON 数组，退出码 0
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query IssueComments(": httpx.Response(
+                200, json=EMPTY_ISSUE_COMMENTS_RESPONSE
+            )
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "list", "TES-123"])
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == []
+
+
+@respx.mock
+def test_comment_list_unknown_issue_not_found(config_path) -> None:
+    """Given 标识 TES-999 不存在（issue 节点返回 null）
+    When 执行 issue comment list TES-999
+    Then 退出码 1，stderr 输出 type 为 not_found 的错误信封，messages 含标识
+    原文
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {"query IssueComments(": httpx.Response(200, json=NO_ISSUE_COMMENTS_RESPONSE)}
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "list", "TES-999"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "TES-999" in "; ".join(error["messages"])
+
+
+@respx.mock
+def test_comment_list_pretty_smoke(config_path) -> None:
+    """Given 已登录且 issue 有评论
+    When 执行 issue comment list --pretty
+    Then 正常退出且输出非空（渲染内容不做字符串断言，见 tests/ABOUTME.md）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {"query IssueComments(": httpx.Response(200, json=ISSUE_COMMENTS_RESPONSE)}
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "list", "TES-123", "--pretty"])
+
+    assert result.exit_code == 0, result.stderr
+    assert result.output.strip()
+
+
+@respx.mock
+def test_comment_add_outputs_id_and_url(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When 执行 issue comment add TES-123 --body
+    Then stdout 为单行 JSON {"id": ..., "url": ...}；mutation input 的
+    issueId 为先解析出的 issue UUID、body 逐字透传
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation CommentCreate(": httpx.Response(
+                200, json=CREATE_COMMENT_RESPONSE
+            ),
+        }
+    )
+
+    result = runner.invoke(
+        app, ["issue", "comment", "add", "TES-123", "--body", "进度汇报"]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == {
+        "id": "comment-id-1",
+        "url": "https://linear.app/acme/issue/TES-123#comment-comment-id-1",
+    }
+    variables = _last_variables()
+    assert variables["input"] == {"issueId": ISSUE["id"], "body": "进度汇报"}
+
+
+@respx.mock
+def test_comment_add_body_verbatim(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When --body 含换行/Markdown/保留空白
+    Then mutation input 的 body 与输入严格一致（不裁剪/改写/规范化）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation CommentCreate(": httpx.Response(
+                200, json=CREATE_COMMENT_RESPONSE
+            ),
+        }
+    )
+    body = "line1\n\n- item\n```\n  keep indentation  \n```\nend"
+
+    result = runner.invoke(
+        app, ["issue", "comment", "add", "TES-123", "--body", body]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"]["body"] == body
+
+
+@respx.mock
+def test_comment_add_unknown_issue_not_found_before_mutation(config_path) -> None:
+    """Given 标识不存在
+    When 执行 issue comment add
+    Then 退出码 1，not_found 信封含标识原文，且不发 mutation
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issue(": httpx.Response(200, json={"data": {"issue": None}})})
+
+    result = runner.invoke(
+        app, ["issue", "comment", "add", "TES-999", "--body", "x"]
+    )
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "TES-999" in "; ".join(error["messages"])
+    assert not any(
+        "commentCreate" in json.loads(call.request.content)["query"]
+        for call in respx.calls
+    )
+
+
+@respx.mock
+def test_comment_delete_outputs_id_and_deleted(config_path) -> None:
+    """Given 已登录
+    When 执行 issue comment delete <uuid>
+    Then stdout 为 {"id": <uuid>, "deleted": true}，mutation 变量 id 为该 UUID
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {"mutation CommentDelete(": httpx.Response(200, json=DELETE_COMMENT_RESPONSE)}
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "delete", "comment-id-1"])
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == {"id": "comment-id-1", "deleted": True}
+    assert _last_variables() == {"id": "comment-id-1"}
+
+
+@respx.mock
+def test_comment_delete_nonexistent_graphql_envelope(config_path) -> None:
+    """Given 评论 UUID 不存在（服务端 200 + errors）
+    When 执行 issue comment delete
+    Then 退出码 1，stderr 输出 type 为 graphql 的共享错误信封
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {"mutation CommentDelete(": httpx.Response(200, json=GRAPHQL_ERROR_RESPONSE)}
+    )
+
+    result = runner.invoke(app, ["issue", "comment", "delete", "no-such-id"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert error["messages"] == ["Record not found", "Secondary error message"]
+
+
+def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key、一条新建 issue 与一段含换行的评论正文
+    When comment add → comment list → comment delete → comment list
+    Then add 输出 {id, url}（url 含 issue 路径）；list 读回恰含该评论且 body
+    逐字一致、user/createdAt 字段格式正确；delete 后 list 为空；最后归档
+    issue（失败保留现场）
+    """
+    api_key = require_real_api_key(config_path, monkeypatch)
+    run_id = uuid.uuid4().hex[:8]
+    create_result = runner.invoke(
+        app,
+        ["issue", "create", "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x"],
+    )
+    assert create_result.exit_code == 0, create_result.stderr
+    created = json.loads(create_result.output)
+    body = "第一行\n\n* 进度 50%"
+
+    try:
+        add_result = runner.invoke(
+            app, ["issue", "comment", "add", created["identifier"], "--body", body]
+        )
+        assert add_result.exit_code == 0, add_result.stderr
+        comment = json.loads(add_result.output)
+        assert comment["id"]
+        assert created["identifier"] in comment["url"]
+
+        list_result = runner.invoke(
+            app, ["issue", "comment", "list", created["identifier"]]
+        )
+        assert list_result.exit_code == 0, list_result.stderr
+        comments = json.loads(list_result.output)
+        assert len(comments) == 1
+        assert comments[0]["id"] == comment["id"]
+        assert comments[0]["body"] == body
+        assert comments[0]["user"]["name"]
+        assert comments[0]["createdAt"].endswith("Z")
+
+        delete_result = runner.invoke(
+            app, ["issue", "comment", "delete", comment["id"]]
+        )
+        assert delete_result.exit_code == 0, delete_result.stderr
+        assert json.loads(delete_result.output) == {
+            "id": comment["id"],
+            "deleted": True,
+        }
+
+        list_result = runner.invoke(
+            app, ["issue", "comment", "list", created["identifier"]]
+        )
+        assert list_result.exit_code == 0, list_result.stderr
+        assert json.loads(list_result.output) == []
+    except Exception:
+        # 断言失败保留现场，不归档
+        raise
+
+    view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+    assert view_result.exit_code == 0, view_result.stderr
+    archive_issue(api_key, json.loads(view_result.output)["id"])
+
+
+def test_comment_delete_nonexistent_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key 与一个格式合法但不存在的评论 UUID
+    When 执行 issue comment delete
+    Then 退出码非 0，stderr 输出 type 为 graphql 的错误信封，messages 含
+    Linear 返回的 errors[].message 原文（Entity not found: Comment）
+    """
+    require_real_api_key(config_path, monkeypatch)
+
+    result = runner.invoke(
+        app,
+        ["issue", "comment", "delete", "00000000-0000-4000-8000-000000000000"],
+    )
+
+    assert result.exit_code != 0
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert any("Comment" in m for m in error["messages"])
