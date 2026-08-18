@@ -21,12 +21,7 @@ from linear_cli.api import (
     fetch_issues,
     update_issue,
 )
-from linear_cli.config import MissingApiKeyError, resolve_api_key
-from linear_cli.errors import (
-    emit_api_error,
-    emit_auth_error,
-    emit_not_found_error,
-)
+from linear_cli.errors import emit_api_error, emit_not_found_error, require_api_key
 
 issue_app = typer.Typer(
     name="issue",
@@ -48,14 +43,6 @@ comment_app = typer.Typer(
     no_args_is_help=True,
 )
 issue_app.add_typer(comment_app)
-
-
-def _resolve_api_key_or_exit() -> str:
-    """按优先级解析 API key（env → .env → 配置文件）；全部落空时以退出码 1 退出。"""
-    try:
-        return resolve_api_key()
-    except MissingApiKeyError as exc:
-        emit_auth_error(str(exc))
 
 
 def _shape_issue(node: dict) -> dict:
@@ -84,7 +71,7 @@ def create(
     ),
 ) -> None:
     """创建一条 issue 并返回标识与网页 URL。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         issue = create_issue(api_key, team, title, body)
     except TeamNotFoundError as exc:
@@ -111,7 +98,7 @@ def view(
     ),
 ) -> None:
     """按标识读回一条 issue（无需 Team 参数）。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         issue = fetch_issue(api_key, issue_id)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
@@ -168,7 +155,7 @@ def list_issues(
     ),
 ) -> None:
     """按过滤条件列出工作区的 issue。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     issue_filter = build_issue_filter(
         team=team,
         state=state,
@@ -238,7 +225,7 @@ def update(
             "至少提供一个要更新的字段 flag（--title/--body/--state 等）。",
             param_hint="--title",
         )
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         updated = update_issue(
             api_key,
@@ -293,7 +280,7 @@ def list_comments(
     ),
 ) -> None:
     """列出 issue 的评论（按创建时间序）。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         comments = fetch_issue_comments(api_key, issue_id)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
@@ -320,7 +307,7 @@ def add_comment(
     ),
 ) -> None:
     """给 issue 添加一条评论（正文逐字透传）。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         comment = create_comment(api_key, issue_id, body)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
@@ -349,7 +336,7 @@ def delete_comment_command(
     ),
 ) -> None:
     """按 UUID 删除一条评论。"""
-    api_key = _resolve_api_key_or_exit()
+    api_key = require_api_key()
     try:
         deleted = delete_comment(api_key, comment_id)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:

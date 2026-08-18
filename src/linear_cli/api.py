@@ -194,6 +194,18 @@ mutation CommentDelete($id: String!) {
 }
 """
 
+_CREATE_ISSUE_LABEL_MUTATION = """
+mutation IssueLabelCreate($input: IssueLabelCreateInput!) {
+  issueLabelCreate(input: $input) {
+    success
+    issueLabel {
+      id
+      name
+    }
+  }
+}
+"""
+
 
 class GraphQLAPIError(Exception):
     """Linear 响应含 GraphQL ``errors`` 字段时抛出。
@@ -260,6 +272,20 @@ def fetch_teams(api_key: str) -> list[dict[str, str]]:
     return _post(api_key, _TEAMS_QUERY, {})["data"]["teams"]["nodes"]
 
 
+def resolve_team_id(api_key: str, team: str) -> str:
+    """把 Team 取值解析为 UUID：UUID 原样返回，否则按缩写（忽略大小写）匹配。
+
+    找不到对应 Team 时抛 ``TeamNotFoundError``（写入前确定性报错）。
+    """
+    if _UUID_RE.fullmatch(team):
+        return team
+    teams = fetch_teams(api_key)
+    match = next((t for t in teams if t["key"].lower() == team.lower()), None)
+    if match is None:
+        raise TeamNotFoundError(team)
+    return match["id"]
+
+
 def create_issue(
     api_key: str, team_key: str, title: str, description: str
 ) -> dict:
@@ -268,14 +294,11 @@ def create_issue(
     ``description`` 原样透传给 Linear ``description`` 字段，不做任何裁剪或改写；
     缩写找不到对应 Team 时抛 ``TeamNotFoundError``。
     """
-    teams = fetch_teams(api_key)
-    team = next((t for t in teams if t["key"].lower() == team_key.lower()), None)
-    if team is None:
-        raise TeamNotFoundError(team_key)
+    team_id = resolve_team_id(api_key, team_key)
     data = _post(
         api_key,
         _CREATE_ISSUE_MUTATION,
-        {"teamId": team["id"], "title": title, "description": description},
+        {"teamId": team_id, "title": title, "description": description},
     )
     return data["data"]["issueCreate"]["issue"]
 
@@ -316,6 +339,9 @@ query IssueLabels {
       id
       name
       color
+      team {
+        id
+      }
     }
   }
 }
@@ -335,7 +361,7 @@ query Projects {
 """
 
 _CYCLES_QUERY = """
-query Cycles($teamId: String!) {
+query Cycles($teamId: ID!) {
   cycles(filter: {team: {id: {eq: $teamId}}}) {
     nodes {
       id
@@ -680,3 +706,18 @@ def delete_comment(api_key: str, comment_id: str) -> bool:
     """
     data = _post(api_key, _DELETE_COMMENT_MUTATION, {"id": comment_id})
     return data["data"]["commentDelete"]["success"]
+
+
+def create_issue_label(
+    api_key: str, team: str, name: str, color: str | None
+) -> dict:
+    """创建一个 issue 标签，返回 ``{"id", "name"}``。
+
+    ``team`` 为缩写或 UUID（客户端解析，写入前确定性报 ``not_found``）；
+    ``color`` 未传时不进 input。
+    """
+    input_: dict[str, object] = {"teamId": resolve_team_id(api_key, team), "name": name}
+    if color is not None:
+        input_["color"] = color
+    data = _post(api_key, _CREATE_ISSUE_LABEL_MUTATION, {"input": input_})
+    return data["data"]["issueLabelCreate"]["issueLabel"]

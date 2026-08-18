@@ -13,9 +13,19 @@ import httpx
 import typer
 
 from linear_cli.api import GraphQLAPIError
+from linear_cli.config import MissingApiKeyError, resolve_api_key
 
 # 账号级 GraphQL 错误的关键词：命中时除 messages 外再附完整原始响应正文
 _ACCOUNT_ERROR_KEYWORDS = ("AUTHENTICATION", "AUTHORIZATION", "RATE_LIMIT")
+
+
+def require_api_key() -> str:
+    """按优先级解析 API key（env → .env → 配置文件）；全部落空时输出 auth
+    错误信封并以退出码 1 终止。"""
+    try:
+        return resolve_api_key()
+    except MissingApiKeyError as exc:
+        emit_auth_error(str(exc))
 
 
 def _emit(error: dict[str, object]) -> NoReturn:

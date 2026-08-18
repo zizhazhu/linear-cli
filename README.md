@@ -107,6 +107,39 @@ $ linear issue comment delete 2a2ced62-...
 
 `add` 的 `--body` 逐字透传（同 create 契约）；`delete` 按评论 UUID 删除（UUID 从 `comment list` 获得），用于收回发错的汇报。
 
+## 查询层
+
+核心层命令取值来源（team 缩写、状态名、负责人、标签、项目、Cycle 等）各一条 list：
+
+```console
+$ linear team list
+[{"id": "...", "key": "TES", "name": "Test"}]
+
+$ linear user list
+[{"id": "...", "name": "Name", "displayName": "name", "email": "name@example.com", "active": true}]
+
+$ linear status list --team TES
+[{"id": "...", "name": "Todo", "type": "unstarted", "position": 1.0}, ...]
+
+$ linear label list --team TES
+[{"id": "...", "name": "Bug", "color": "#EB5757"}, ...]
+
+$ linear project list
+[{"id": "...", "name": "dotfiles", "state": "started", "url": "https://linear.app/..."}]
+
+$ linear cycle list --team TES
+[{"id": "...", "number": 3, "name": "Cycle 3", "startsAt": "...", "endsAt": "..."}]
+```
+
+- `status list` / `cycle list` 的 `--team` 缺省时列出全部 team 的条目拼接；`--team` 取值为缩写或 UUID，解析不到确定性报错。
+- `label list --team` 输出该 team 可用的标签全集（workspace 级 + 该 team 的）。
+- `label create` 供 `issue update --label` 贴尚不存在的标签：
+
+```console
+$ linear label create --team TES --name "release-blocker" --color "#EB5757"
+{"id": "...", "name": "release-blocker"}
+```
+
 ## 配置
 
 配置文件路径按以下优先级解析（全平台统一）：
