@@ -14,6 +14,7 @@ from conftest import (
     ISSUE_RESPONSE,
     TEAMS_NO_MATCH_RESPONSE,
     TEAMS_RESPONSE,
+    error_envelope,
 )
 from real_api import require_real_api_key
 from typer.testing import CliRunner
@@ -71,22 +72,35 @@ def test_create_missing_param_precedes_login_check(config_path) -> None:
 
 @respx.mock
 def test_create_not_logged_in_errors_without_api(config_path) -> None:
-    # 配置文件不存在（未登录）：提示先执行 linear login，不调用 API
+    """Given 配置文件不存在（未登录）
+    When 执行 issue create
+    Then 退出码 1，stderr 输出 type 为 auth 的错误信封，messages 提示先执行
+    linear login，且不调用 API
+    """
     result = runner.invoke(
         app, ["issue", "create", "--team", "TES", "--title", "T", "--body", "B"]
     )
 
     assert result.exit_code == 1
-    assert "linear login" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "auth"
+    assert "linear login" in "; ".join(error["messages"])
     assert not respx.calls
 
 
 @respx.mock
 def test_view_not_logged_in_errors_without_api(config_path) -> None:
+    """Given 配置文件不存在（未登录）
+    When 执行 issue view
+    Then 退出码 1，stderr 输出 type 为 auth 的错误信封，messages 提示先执行
+    linear login，且不调用 API
+    """
     result = runner.invoke(app, ["issue", "view", "TES-123"])
 
     assert result.exit_code == 1
-    assert "linear login" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "auth"
+    assert "linear login" in "; ".join(error["messages"])
     assert not respx.calls
 
 
@@ -107,7 +121,11 @@ def test_view_resolves_env_key_without_config_file(config_path, monkeypatch) -> 
 
 @respx.mock
 def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
-    # teams 响应里没有 ZZZ：报错包含缩写原文，且不发 issueCreate 调用
+    """Given teams 响应里没有缩写 ZZZ
+    When 以 --team ZZZ 执行 issue create
+    Then 退出码 1，stderr 输出 type 为 not_found 的错误信封，messages 含缩写
+    原文 ZZZ，且全程只发 teams 查询、不发 issueCreate
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Teams": httpx.Response(200, json=TEAMS_NO_MATCH_RESPONSE)})
 
@@ -116,7 +134,9 @@ def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
     )
 
     assert result.exit_code == 1
-    assert "ZZZ" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "ZZZ" in "; ".join(error["messages"])
     sent_queries = [
         json.loads(call.request.content)["query"] for call in respx.calls
     ]
@@ -221,33 +241,49 @@ def test_view_json_returns_full_issue(config_path) -> None:
 
 @respx.mock
 def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
-    # Linear 返回 errors 时，逐条 message 原文输出到 stderr，不翻译不裁剪
+    """Given Linear 响应含多条 GraphQL errors
+    When 执行 issue view
+    Then 退出码 1，stderr 输出 type 为 graphql 的错误信封，messages 逐条为
+    errors[].message 原文、保持顺序、不翻译不裁剪，且不附 raw 字段
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=GRAPHQL_ERROR_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-999"])
 
     assert result.exit_code == 1
-    assert "Record not found" in result.stderr
-    assert "Secondary error message" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert error["messages"] == ["Record not found", "Secondary error message"]
+    assert "raw" not in error
 
 
 @respx.mock
 def test_view_account_error_dumps_raw_body(config_path) -> None:
-    # 认证/授权/限流等账号级 GraphQL 错误：message 原文之外再贴原始响应正文
+    """Given Linear 返回认证/授权/限流等账号级 GraphQL 错误
+    When 执行 issue view
+    Then 退出码 1，stderr 输出 type 为 graphql 的错误信封，messages 含 message
+    原文，且 raw 字段为完整原始响应正文（含只在 extensions 里的错误码）
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ACCOUNT_ERROR_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-999"])
 
     assert result.exit_code == 1
-    assert "Authentication required, not authenticated" in result.stderr
-    assert "AUTHENTICATION_ERROR" in result.stderr  # 只出现在 raw body 里
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert "Authentication required, not authenticated" in error["messages"]
+    assert error["raw"] == ACCOUNT_ERROR_RESPONSE
 
 
 @respx.mock
 def test_view_http_error_prints_raw_body(config_path) -> None:
-    # HTTP 非 2xx（如限流 429）：把原始响应正文贴到 stderr
+    """Given Linear 返回 HTTP 非 2xx（如限流 429）
+    When 执行 issue view
+    Then 退出码 1，stderr 输出 type 为 http 的错误信封，status 为 HTTP 状态码，
+    raw 字段为原始响应正文文本
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
@@ -260,7 +296,10 @@ def test_view_http_error_prints_raw_body(config_path) -> None:
     result = runner.invoke(app, ["issue", "view", "TES-123"])
 
     assert result.exit_code == 1
-    assert "Rate limit exceeded" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "http"
+    assert error["status"] == 429
+    assert "Rate limit exceeded" in error["raw"]
 
 
 def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
@@ -317,11 +356,14 @@ def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
 def test_view_nonexistent_identifier_real_api(config_path, monkeypatch) -> None:
     """Given 真实 API key 与一个格式合法但不存在的标识
     When view 该标识
-    Then stderr 包含 Linear 返回的 errors[].message 原文，退出码非 0
+    Then 退出码非 0，stderr 输出 type 为 graphql 的错误信封，messages 含 Linear
+    返回的 errors[].message 原文（Entity not found: Issue ...）
     """
     require_real_api_key(config_path, monkeypatch)
 
     result = runner.invoke(app, ["issue", "view", "TES-999999"])
 
     assert result.exit_code != 0
-    assert "Entity not found: Issue" in result.stderr
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert any("Entity not found: Issue" in m for m in error["messages"])

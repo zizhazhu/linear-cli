@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -85,6 +86,15 @@ ACCOUNT_ERROR_RESPONSE = {
         }
     ]
 }
+
+
+def error_envelope(result) -> dict:
+    """解析 stderr 的单行 JSON 错误信封，返回 ``error`` 对象。
+
+    信封契约：``{"error": {"type": ..., ...}}``，stderr 除该行外不得有其他内容；
+    ``type`` 取值 ``auth`` / ``not_found`` / ``graphql`` / ``http``。
+    """
+    return json.loads(result.stderr.strip())["error"]
 
 
 @pytest.fixture

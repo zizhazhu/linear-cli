@@ -11,6 +11,7 @@ from conftest import (
     UNAUTHORIZED_RESPONSE,
     VIEWER,
     VIEWER_RESPONSE,
+    error_envelope,
 )
 from typer.testing import CliRunner
 
@@ -46,12 +47,20 @@ def test_login_with_json_flag_outputs_viewer(config_path: Path) -> None:
 
 @respx.mock
 def test_login_with_invalid_key_fails_without_saving(config_path: Path) -> None:
-    # 用无效 key 登录（API 返回 401），验证退出码非零且不写入配置文件
+    """Given API 对无效 key 返回 HTTP 401
+    When 用该 key 登录
+    Then 退出码 1，stderr 输出 type 为 http、status 为 401、raw 含原始响应
+    正文的错误信封，且不写入配置文件
+    """
     respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(401, json=UNAUTHORIZED_RESPONSE))
 
     result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
 
     assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "http"
+    assert error["status"] == 401
+    assert "Authentication required" in error["raw"]
     assert not config_path.exists()
 
 
