@@ -127,6 +127,55 @@ CREATE_ISSUE_RESPONSE = {
 
 ISSUE_RESPONSE = {"data": {"issue": ISSUE_NODE}}
 
+# issues 列表查询的样例响应：两条 issue，其二 assignee 为 null
+ISSUE_LIST_NODES = [
+    {
+        "identifier": "TES-123",
+        "title": "Test issue",
+        "url": "https://linear.app/acme/issue/TES-123",
+        "state": {"name": "In Progress", "type": "started"},
+        "priority": 2,
+        "assignee": {"name": "Test User"},
+        "updatedAt": "2026-08-02T00:00:00.000Z",
+    },
+    {
+        "identifier": "TES-124",
+        "title": "No assignee issue",
+        "url": "https://linear.app/acme/issue/TES-124",
+        "state": {"name": "Todo", "type": "unstarted"},
+        "priority": 0,
+        "assignee": None,
+        "updatedAt": "2026-08-01T00:00:00.000Z",
+    },
+]
+
+ISSUES_RESPONSE = {"data": {"issues": {"nodes": ISSUE_LIST_NODES}}}
+
+EMPTY_ISSUES_RESPONSE = {"data": {"issues": {"nodes": []}}}
+
+# CLI issue list 的输出契约形态：view 字段集的子集（assignee 只取 name），
+# 可空字段原样为 null
+ISSUE_LIST = [
+    {
+        "identifier": "TES-123",
+        "title": "Test issue",
+        "url": "https://linear.app/acme/issue/TES-123",
+        "state": {"name": "In Progress", "type": "started"},
+        "priority": 2,
+        "assignee": {"name": "Test User"},
+        "updatedAt": "2026-08-02T00:00:00.000Z",
+    },
+    {
+        "identifier": "TES-124",
+        "title": "No assignee issue",
+        "url": "https://linear.app/acme/issue/TES-124",
+        "state": {"name": "Todo", "type": "unstarted"},
+        "priority": 0,
+        "assignee": None,
+        "updatedAt": "2026-08-01T00:00:00.000Z",
+    },
+]
+
 GRAPHQL_ERROR_RESPONSE = {
     "errors": [
         {"message": "Record not found", "extensions": {"code": "RECORD_NOT_FOUND"}},

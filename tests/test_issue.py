@@ -7,11 +7,14 @@ import respx
 from conftest import (
     ACCOUNT_ERROR_RESPONSE,
     CREATE_ISSUE_RESPONSE,
+    EMPTY_ISSUES_RESPONSE,
     FAKE_API_KEY,
     GRAPHQL_ERROR_RESPONSE,
     GRAPHQL_URL,
     ISSUE,
+    ISSUE_LIST,
     ISSUE_RESPONSE,
+    ISSUES_RESPONSE,
     TEAMS_NO_MATCH_RESPONSE,
     TEAMS_RESPONSE,
     error_envelope,
@@ -294,6 +297,108 @@ def test_view_json_flag_removed_errors(config_path) -> None:
 
 
 @respx.mock
+def test_list_defaults_to_json_array(config_path) -> None:
+    """Given 已登录且工作区有两条 issue（其二无 assignee）
+    When 执行 issue list（不带任何 flag）
+    Then stdout 为 JSON 数组，逐项为 view 字段集的子集（identifier/title/
+    url/state{name,type}/priority/assignee{name}/updatedAt），assignee 为
+    null 的项原样保留 null
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list"])
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == ISSUE_LIST
+
+
+@respx.mock
+def test_list_limit_flag_overrides_default(config_path) -> None:
+    """Given 已登录
+    When 分别执行 issue list（默认）与 issue list --limit 10
+    Then 请求变量 first 默认 50，--limit 时取传入值
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    default_result = runner.invoke(app, ["issue", "list"])
+    limited_result = runner.invoke(app, ["issue", "list", "--limit", "10"])
+
+    assert default_result.exit_code == 0, default_result.stderr
+    assert limited_result.exit_code == 0, limited_result.stderr
+    firsts = [
+        json.loads(call.request.content)["variables"]["first"]
+        for call in respx.calls
+    ]
+    assert firsts == [50, 10]
+
+
+@respx.mock
+def test_list_pretty_smoke(config_path) -> None:
+    """Given 已登录且工作区有 issue
+    When 执行 issue list --pretty
+    Then 正常退出且输出非空（rich 表格内容不做字符串断言，见
+    tests/ABOUTME.md 渲染层约定）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list", "--pretty"])
+
+    assert result.exit_code == 0, result.stderr
+    assert result.output.strip()
+
+
+@respx.mock
+def test_list_not_logged_in_errors_without_api(config_path) -> None:
+    """Given 配置文件不存在（未登录）
+    When 执行 issue list
+    Then 退出码 1，stderr 输出 type 为 auth 的错误信封，且不调用 API
+    """
+    result = runner.invoke(app, ["issue", "list"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "auth"
+    assert "linear login" in "; ".join(error["messages"])
+    assert not respx.calls
+
+
+@respx.mock
+def test_list_empty_result_outputs_empty_array(config_path) -> None:
+    """Given 已登录且查询结果为空
+    When 执行 issue list
+    Then stdout 为空 JSON 数组，退出码 0
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=EMPTY_ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list"])
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == []
+
+
+@respx.mock
+def test_list_graphql_error_uses_shared_envelope(config_path) -> None:
+    """Given Linear 响应含 GraphQL errors
+    When 执行 issue list
+    Then 退出码 1，stderr 输出与其他命令一致的 graphql 错误信封
+    （共享错误通道的接线验证）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=GRAPHQL_ERROR_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert error["messages"] == ["Record not found", "Secondary error message"]
+
+
+@respx.mock
 def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
     """Given Linear 响应含多条 GraphQL errors
     When 执行 issue view
@@ -433,3 +538,27 @@ def test_view_nonexistent_identifier_real_api(config_path, monkeypatch) -> None:
     error = error_envelope(result)
     assert error["type"] == "graphql"
     assert any("Entity not found: Issue" in m for m in error["messages"])
+
+
+def test_list_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key
+    When issue list --limit 1（不带任何 filter）
+    Then 返回恰好 1 条，列表项符合输出契约（identifier 含连字符、url 为
+    linear.app 链接、state.name/type 与 priority/updatedAt 格式正确、
+    assignee 字段存在且可空）
+    """
+    require_real_api_key(config_path, monkeypatch)
+
+    result = runner.invoke(app, ["issue", "list", "--limit", "1"])
+
+    assert result.exit_code == 0, result.stderr
+    items = json.loads(result.output)
+    assert len(items) == 1
+    item = items[0]
+    assert isinstance(item["identifier"], str) and "-" in item["identifier"]
+    assert item["url"].startswith("https://linear.app/")
+    assert isinstance(item["state"]["name"], str)
+    assert isinstance(item["state"]["type"], str)
+    assert isinstance(item["priority"], int)
+    assert "assignee" in item  # 可空，原样为 null
+    assert item["updatedAt"].endswith("Z")
