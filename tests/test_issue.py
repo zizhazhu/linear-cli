@@ -398,6 +398,236 @@ def test_list_graphql_error_uses_shared_envelope(config_path) -> None:
     assert error["messages"] == ["Record not found", "Secondary error message"]
 
 
+FILTER_UUID = "11111111-2222-3333-4444-555555555555"
+
+
+def _last_variables() -> dict:
+    """读取最近一次请求的 GraphQL 变量（离线测试断言请求构造用）。"""
+    return json.loads(respx.calls[-1].request.content)["variables"]
+
+
+@pytest.mark.parametrize(
+    ("flag_args", "expected_filter"),
+    [
+        (
+            ["--team", "TES"],
+            {
+                "team": {
+                    "or": [
+                        {"key": {"eqIgnoreCase": "TES"}},
+                        {"name": {"eqIgnoreCase": "TES"}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--team", FILTER_UUID],
+            {
+                "team": {
+                    "or": [
+                        {"id": {"eq": FILTER_UUID}},
+                        {"key": {"eqIgnoreCase": FILTER_UUID}},
+                        {"name": {"eqIgnoreCase": FILTER_UUID}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--state", "In Progress"],
+            {
+                "state": {
+                    "or": [
+                        {"name": {"eqIgnoreCase": "In Progress"}},
+                        {"type": {"eq": "In Progress"}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--assignee", "me"],
+            {"assignee": {"isMe": {"eq": True}}},
+        ),
+        (
+            ["--assignee", "Test User"],
+            {"assignee": {"name": {"eqIgnoreCase": "Test User"}}},
+        ),
+        (
+            ["--assignee", "user@example.com"],
+            {
+                "assignee": {
+                    "or": [
+                        {"name": {"eqIgnoreCase": "user@example.com"}},
+                        {"email": {"eq": "user@example.com"}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--label", "bug"],
+            {"labels": {"some": {"name": {"eqIgnoreCase": "bug"}}}},
+        ),
+        (
+            ["--project", "Website"],
+            {
+                "project": {
+                    "or": [
+                        {"name": {"eqIgnoreCase": "Website"}},
+                        {"slugId": {"eq": "Website"}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--cycle", "3"],
+            {
+                "cycle": {
+                    "or": [
+                        {"name": {"eqIgnoreCase": "3"}},
+                        {"number": {"eq": 3}},
+                    ]
+                }
+            },
+        ),
+        (
+            ["--query", "cli"],
+            {
+                "or": [
+                    {"title": {"containsIgnoreCase": "cli"}},
+                    {"description": {"containsIgnoreCase": "cli"}},
+                ]
+            },
+        ),
+        (
+            ["--created-at=-P1D"],
+            {"createdAt": {"gte": "-P1D"}},
+        ),
+        (
+            ["--updated-at", "2026-08-01"],
+            {"updatedAt": {"gte": "2026-08-01"}},
+        ),
+    ],
+)
+@respx.mock
+def test_list_filter_flag_maps_to_graphql_filter(
+    config_path, flag_args: list[str], expected_filter: dict
+) -> None:
+    """Given 已登录
+    When issue list 带单个 filter flag
+    Then 请求变量的 filter 恰为该 flag 的 GraphQL 等价形态（名称走忽略大小写
+    匹配；仅当值形如 UUID 才附 id 分支——服务端 id 比较器校验 UUID 形态）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list", *flag_args])
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["filter"] == expected_filter
+
+
+@respx.mock
+def test_list_no_filter_flags_omits_filter_key(config_path) -> None:
+    """Given 已登录
+    When issue list 不带任何 filter flag
+    Then 请求变量不含 filter 键（GraphQL 缺省即无过滤）；orderBy 显式为
+    updatedAt（与 MCP 缺省一致），includeArchived 显式为 false（API 缺省
+    行为已实测为不含归档，显式传递消除歧义）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list"])
+
+    assert result.exit_code == 0, result.stderr
+    variables = _last_variables()
+    assert "filter" not in variables
+    assert variables == {"first": 50, "orderBy": "updatedAt", "includeArchived": False}
+
+
+@respx.mock
+def test_list_combined_filters_are_anded(config_path) -> None:
+    """Given 已登录
+    When issue list 同时带 --team、--assignee me 与 --query
+    Then filter 对象并列三个键（GraphQL 顶层字段为 AND 语义），--query 的
+    or 与其他 filter 键共存不互斥
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(
+        app,
+        ["issue", "list", "--team", "TES", "--assignee", "me", "--query", "cli"],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["filter"] == {
+        "team": {
+            "or": [
+                {"key": {"eqIgnoreCase": "TES"}},
+                {"name": {"eqIgnoreCase": "TES"}},
+            ]
+        },
+        "assignee": {"isMe": {"eq": True}},
+        "or": [
+            {"title": {"containsIgnoreCase": "cli"}},
+            {"description": {"containsIgnoreCase": "cli"}},
+        ],
+    }
+
+
+@respx.mock
+def test_list_order_by_defaults_to_updated_at(config_path) -> None:
+    """Given 已登录
+    When 分别执行 issue list（默认）与 issue list --order-by createdAt
+    Then 请求变量 orderBy 分别为 updatedAt（默认，与 MCP 缺省一致）与
+    传入值 createdAt
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    default_result = runner.invoke(app, ["issue", "list"])
+    created_result = runner.invoke(app, ["issue", "list", "--order-by", "createdAt"])
+
+    assert default_result.exit_code == 0, default_result.stderr
+    assert created_result.exit_code == 0, created_result.stderr
+    order_bys = [
+        json.loads(call.request.content)["variables"]["orderBy"]
+        for call in respx.calls
+    ]
+    assert order_bys == ["updatedAt", "createdAt"]
+
+
+@respx.mock
+def test_list_include_archived_flag_passes_true(config_path) -> None:
+    """Given 已登录
+    When 执行 issue list --include-archived
+    Then 请求变量 includeArchived 为 true（默认 false，见
+    test_list_no_filter_flags_omits_filter_key）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list", "--include-archived"])
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["includeArchived"] is True
+
+
+@respx.mock
+def test_list_invalid_order_by_usage_error(config_path) -> None:
+    """Given 已登录
+    When issue list --order-by priority（非法排序键）
+    Then typer 报用法错误（exit 2），不调用 API
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
+
+    result = runner.invoke(app, ["issue", "list", "--order-by", "priority"])
+
+    assert result.exit_code == 2
+    assert not respx.calls
+
+
 @respx.mock
 def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
     """Given Linear 响应含多条 GraphQL errors
@@ -562,3 +792,47 @@ def test_list_real_api(config_path, monkeypatch) -> None:
     assert isinstance(item["priority"], int)
     assert "assignee" in item  # 可空，原样为 null
     assert item["updatedAt"].endswith("Z")
+
+
+def test_list_filters_roundtrip_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key 与一条新建 issue（唯一 run 标识标题，初始状态 Backlog）
+    When issue list --team TES --state Backlog --query <run> --created-at=-P1D
+         --updated-at=-P1D --order-by updatedAt
+    Then 结果恰含该新建 issue（team/state/query/日期过滤服务端读回一致），
+    且每一项的 state.name 均为 Backlog；断言通过后归档（失败保留现场）
+    """
+    api_key = require_real_api_key(config_path, monkeypatch)
+    run_id = uuid.uuid4().hex[:8]
+    title = f"cli-roundtrip-{run_id}"
+
+    create_result = runner.invoke(
+        app, ["issue", "create", "--team", "TES", "--title", title, "--body", "x"]
+    )
+    assert create_result.exit_code == 0, create_result.stderr
+    created = json.loads(create_result.output)
+
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "issue", "list",
+                "--team", "TES",
+                "--state", "Backlog",
+                "--query", run_id,
+                "--created-at=-P1D",
+                "--updated-at=-P1D",
+                "--order-by", "updatedAt",
+            ],
+        )
+        assert result.exit_code == 0, result.stderr
+        items = json.loads(result.output)
+        identifiers = [item["identifier"] for item in items]
+        assert identifiers == [created["identifier"]]
+        assert all(item["state"]["name"] == "Backlog" for item in items)
+    except Exception:
+        # 断言失败保留现场，不归档
+        raise
+
+    view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+    assert view_result.exit_code == 0, view_result.stderr
+    archive_issue(api_key, json.loads(view_result.output)["id"])
