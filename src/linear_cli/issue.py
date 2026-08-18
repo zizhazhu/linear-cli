@@ -4,12 +4,15 @@ import json
 
 import httpx
 import typer
+from rich.console import Console
+from rich.table import Table
 
 from linear_cli.api import (
     GraphQLAPIError,
     TeamNotFoundError,
     create_issue,
     fetch_issue,
+    fetch_issues,
 )
 from linear_cli.config import MissingApiKeyError, resolve_api_key
 from linear_cli.errors import (
@@ -100,3 +103,42 @@ def view(
             typer.echo(shaped["description"])
         else:
             typer.echo(json.dumps(shaped, ensure_ascii=False))
+
+
+@issue_app.command("list")
+def list_issues(
+    limit: int = typer.Option(
+        50, "--limit", help="最多返回的 issue 数。"
+    ),
+    pretty: bool = typer.Option(
+        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
+    ),
+) -> None:
+    """列出工作区的 issue。"""
+    api_key = _resolve_api_key_or_exit()
+    try:
+        issues = fetch_issues(api_key, limit)
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
+    else:
+        if pretty:
+            _print_issues_table(issues)
+        else:
+            typer.echo(json.dumps(issues, ensure_ascii=False))
+
+
+def _print_issues_table(issues: list[dict]) -> None:
+    """以 rich 表格渲染 issue 列表（--pretty 专用）。"""
+    table = Table(show_header=True, header_style="bold")
+    for column in ("标识", "标题", "状态", "优先级", "负责人", "更新时间"):
+        table.add_column(column)
+    for issue in issues:
+        table.add_row(
+            issue["identifier"],
+            issue["title"],
+            issue["state"]["name"],
+            str(issue["priority"]),
+            issue["assignee"]["name"] if issue["assignee"] else "-",
+            issue["updatedAt"],
+        )
+    Console().print(table)

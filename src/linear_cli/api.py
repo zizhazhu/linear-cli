@@ -101,6 +101,27 @@ query Issue($id: String!) {
 }
 """
 
+_ISSUES_QUERY = """
+query Issues($first: Int!) {
+  issues(first: $first) {
+    nodes {
+      identifier
+      title
+      url
+      state {
+        name
+        type
+      }
+      priority
+      assignee {
+        name
+      }
+      updatedAt
+    }
+  }
+}
+"""
+
 _ARCHIVE_ISSUE_MUTATION = """
 mutation IssueArchive($id: String!) {
   issueArchive(id: $id) {
@@ -188,6 +209,15 @@ def fetch_issue(api_key: str, issue_id: str) -> dict | None:
     """按标识（如 ``TES-123``）读回一条 issue；不存在时返回 ``None``。"""
     data = _post(api_key, _ISSUE_QUERY, {"id": issue_id})
     return data["data"]["issue"]
+
+
+def fetch_issues(api_key: str, first: int) -> list[dict]:
+    """拉取工作区 issue 列表，最多 ``first`` 条。
+
+    返回节点即输出契约：view 字段集的子集（identifier/title/url/
+    state/priority/assignee/updatedAt），``assignee`` 可空原样为 null。
+    """
+    return _post(api_key, _ISSUES_QUERY, {"first": first})["data"]["issues"]["nodes"]
 
 
 def archive_issue(api_key: str, issue_id: str) -> None:
