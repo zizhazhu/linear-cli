@@ -8,6 +8,7 @@ import respx
 from conftest import (
     FAKE_API_KEY,
     GRAPHQL_URL,
+    LOGIN_OUTPUT,
     UNAUTHORIZED_RESPONSE,
     VIEWER,
     VIEWER_RESPONSE,
@@ -35,14 +36,46 @@ def test_login_with_valid_api_key_saves_config(config_path: Path) -> None:
 
 
 @respx.mock
-def test_login_with_json_flag_outputs_viewer(config_path: Path) -> None:
-    # 带 --json 标志登录，验证 stdout 输出的是 viewer 信息的 JSON
+def test_login_defaults_to_json_output(config_path: Path) -> None:
+    """Given 合法 API key
+    When 执行 login（不带任何输出 flag）
+    Then stdout 为单行 JSON：viewer 与 workspace 两个顶层字段，workspace.url
+    由 organization.urlKey 推导
+    """
     respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
+
+    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == LOGIN_OUTPUT
+
+
+@respx.mock
+def test_login_pretty_prints_human_readable(config_path: Path) -> None:
+    """Given 合法 API key
+    When 执行 login --pretty
+    Then 输出「已登录：Name <email>」人类可读格式
+    """
+    respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
+
+    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY, "--pretty"])
+
+    assert result.exit_code == 0
+    assert "已登录：Test User <test@example.com>" in result.output
+
+
+@respx.mock
+def test_login_json_flag_removed_errors(config_path: Path) -> None:
+    """Given JSON 已成为默认输出
+    When 仍传旧的 --json flag
+    Then typer 报用法错误（exit 2），不调用 API
+    """
+    route = respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
 
     result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY, "--json"])
 
-    assert result.exit_code == 0
-    assert json.loads(result.output) == VIEWER
+    assert result.exit_code == 2
+    assert not route.calls
 
 
 @respx.mock

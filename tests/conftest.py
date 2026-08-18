@@ -15,7 +15,15 @@ VIEWER = {
     "email": "test@example.com",
 }
 
-VIEWER_RESPONSE = {"data": {"viewer": VIEWER}}
+# GraphQL 响应里 organization 节点的原始形态；CLI login 输出中 url 由
+# urlKey 推导（https://linear.app/<urlKey>）
+ORG_NODE = {"id": "org-id-1", "name": "Acme", "urlKey": "acme"}
+
+VIEWER_RESPONSE = {"data": {"viewer": VIEWER, "organization": ORG_NODE}}
+
+# CLI login 的输出契约形态：viewer + workspace 两个顶层字段
+WORKSPACE = {"id": "org-id-1", "name": "Acme", "url": "https://linear.app/acme"}
+LOGIN_OUTPUT = {"viewer": VIEWER, "workspace": WORKSPACE}
 
 # Real response for an invalid key: HTTP 401, no top-level "data" field
 UNAUTHORIZED_RESPONSE = {
@@ -113,9 +121,8 @@ ISSUE = {
     "dueDate": None,
 }
 
-# create 域尚未迁移，mutation 响应暂沿用输出形态（只取 identifier/url）
 CREATE_ISSUE_RESPONSE = {
-    "data": {"issueCreate": {"success": True, "issue": ISSUE}}
+    "data": {"issueCreate": {"success": True, "issue": ISSUE_NODE}}
 }
 
 ISSUE_RESPONSE = {"data": {"issue": ISSUE_NODE}}

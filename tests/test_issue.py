@@ -145,7 +145,11 @@ def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
 
 
 @respx.mock
-def test_create_success_outputs_identifier_and_url(config_path) -> None:
+def test_create_defaults_to_json_output(config_path) -> None:
+    """Given 已登录且 team TES 存在
+    When 执行 issue create（不带任何输出 flag）
+    Then stdout 为单行 JSON：{"identifier": ..., "url": ...}
+    """
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route(
         {
@@ -159,9 +163,56 @@ def test_create_success_outputs_identifier_and_url(config_path) -> None:
     )
 
     assert result.exit_code == 0, result.stderr
-    assert "TES-123" in result.output
-    assert "https://linear.app/" in result.output
-    assert "TES-123" in result.output.split()[-1]
+    assert json.loads(result.output) == {
+        "identifier": "TES-123",
+        "url": ISSUE["url"],
+    }
+
+
+@respx.mock
+def test_create_pretty_outputs_identifier_and_url(config_path) -> None:
+    """Given 已登录且 team TES 存在
+    When 执行 issue create --pretty
+    Then 输出单行「标识 URL」人类可读格式
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
+            "mutation IssueCreate": httpx.Response(200, json=CREATE_ISSUE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        ["issue", "create", "--team", "TES", "--title", "T", "--body", "B", "--pretty"],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert result.output.strip() == f"TES-123 {ISSUE['url']}"
+
+
+@respx.mock
+def test_create_json_flag_removed_errors(config_path) -> None:
+    """Given JSON 已成为默认输出
+    When 仍传旧的 --json flag
+    Then typer 报用法错误（exit 2），不调用 API
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
+            "mutation IssueCreate": httpx.Response(200, json=CREATE_ISSUE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        ["issue", "create", "--team", "TES", "--title", "T", "--body", "B", "--json"],
+    )
+
+    assert result.exit_code == 2
+    assert not respx.calls
 
 
 @respx.mock
@@ -192,28 +243,6 @@ def test_create_passes_body_verbatim_to_api(config_path) -> None:
     assert variables["description"] == body
     # 凭据来自配置文件（conftest 已隔离 LINEAR_API_KEY 环境变量）
     assert create_call.request.headers["Authorization"] == FAKE_API_KEY
-
-
-@respx.mock
-def test_create_json_output(config_path) -> None:
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {
-            "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
-            "mutation IssueCreate": httpx.Response(200, json=CREATE_ISSUE_RESPONSE),
-        }
-    )
-
-    result = runner.invoke(
-        app,
-        ["issue", "create", "--team", "TES", "--title", "T", "--body", "B", "--json"],
-    )
-
-    assert result.exit_code == 0
-    assert json.loads(result.output) == {
-        "identifier": "TES-123",
-        "url": ISSUE["url"],
-    }
 
 
 @respx.mock
@@ -355,7 +384,7 @@ def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
 
     create_result = runner.invoke(
         app,
-        ["issue", "create", "--team", "TES", "--title", title, "--body", body, "--json"],
+        ["issue", "create", "--team", "TES", "--title", title, "--body", body],
     )
     assert create_result.exit_code == 0, create_result.stderr
     created = json.loads(create_result.output)
