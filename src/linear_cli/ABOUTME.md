@@ -18,6 +18,7 @@
 | `app.py` | typer app 定义与入口函数 `main`；在此挂载各子命令 |
 | `api.py` | Linear GraphQL 客户端（query/mutation + httpx），含 issue 的 create/view/archive 操作 |
 | `config.py` | 配置路径解析（`LINEAR_CONFIG_PATH` → XDG → `~/.config`）、凭据读写、凭据来源解析（环境变量 → `.env` → 配置文件；`.env` 只读不注入环境变量） |
+| `errors.py` | 结构化 JSON 错误信封：所有命令的失败统一为 stderr 单行 JSON `{"error": {"type": ...}}`（type ∈ auth / not_found / graphql / http）+ 退出码 1 |
 | `login.py` | `login` 命令：验证 API key 并保存凭据 |
 | `issue.py` | `issue` 命令组：`create`（`--team`/`--title`/`--body`）与 `view`（标识） |
 | `__main__.py` | 支持 `python -m linear_cli` 执行 |

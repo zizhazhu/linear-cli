@@ -1,7 +1,6 @@
 """``issue`` 命令组：create 与 view。"""
 
 import json
-from typing import NoReturn
 
 import httpx
 import typer
@@ -13,6 +12,11 @@ from linear_cli.api import (
     fetch_issue,
 )
 from linear_cli.config import MissingApiKeyError, resolve_api_key
+from linear_cli.errors import (
+    emit_api_error,
+    emit_auth_error,
+    emit_not_found_error,
+)
 
 issue_app = typer.Typer(
     name="issue",
@@ -20,45 +24,13 @@ issue_app = typer.Typer(
     no_args_is_help=True,
 )
 
-# 账号级 GraphQL 错误的关键词：命中时除 message 原文外再贴原始响应正文
-_ACCOUNT_ERROR_KEYWORDS = ("AUTHENTICATION", "AUTHORIZATION", "RATE_LIMIT")
-
 
 def _resolve_api_key_or_exit() -> str:
-    """按优先级解析 API key（env → .env → 配置文件）；全部落空时提示并以退出码 1 退出。"""
+    """按优先级解析 API key（env → .env → 配置文件）；全部落空时以退出码 1 退出。"""
     try:
         return resolve_api_key()
     except MissingApiKeyError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1) from None
-
-
-def _is_account_error(errors: list[dict]) -> bool:
-    """判断 GraphQL errors 是否属认证/授权/限流等账号级错误。"""
-    for err in errors:
-        ext = err.get("extensions") or {}
-        blob = f"{ext.get('code', '')} {ext.get('type', '')}".upper()
-        if any(keyword in blob for keyword in _ACCOUNT_ERROR_KEYWORDS):
-            return True
-    return False
-
-
-def _handle_api_error(exc: Exception) -> NoReturn:
-    """把 Linear API 错误原样输出到 stderr 后以退出码 1 退出。
-
-    GraphQL ``errors``：逐条输出 ``errors[].message`` 原文，不翻译不裁剪；
-    账号级错误额外贴原始响应正文。HTTP 错误：贴原始响应正文。
-    """
-    if isinstance(exc, GraphQLAPIError):
-        for message in exc.messages:
-            typer.echo(message, err=True)
-        if _is_account_error(exc.errors):
-            typer.echo(json.dumps(exc.raw_body), err=True)
-        raise typer.Exit(1)
-    if isinstance(exc, httpx.HTTPStatusError):
-        typer.echo(exc.response.text, err=True)
-        raise typer.Exit(1)
-    raise exc
+        emit_auth_error(str(exc))
 
 
 @issue_app.command("create")
@@ -77,10 +49,9 @@ def create(
     try:
         issue = create_issue(api_key, team, title, body)
     except TeamNotFoundError as exc:
-        typer.echo(f"error: Team 缩写 {exc.key!r} 不存在。", err=True)
-        raise typer.Exit(1) from None
+        emit_not_found_error([f"Team 缩写 {exc.key!r} 不存在。"])
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
-        _handle_api_error(exc)
+        emit_api_error(exc)
     else:
         if json_output:
             typer.echo(
@@ -102,11 +73,10 @@ def view(
     try:
         issue = fetch_issue(api_key, issue_id)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
-        _handle_api_error(exc)
+        emit_api_error(exc)
     else:
         if issue is None:
-            typer.echo(f"error: issue {issue_id!r} 不存在。", err=True)
-            raise typer.Exit(1) from None
+            emit_not_found_error([f"issue {issue_id!r} 不存在。"])
         if json_output:
             typer.echo(json.dumps(issue))
         else:

@@ -5,8 +5,9 @@ import json
 import httpx
 import typer
 
-from linear_cli.api import fetch_viewer
+from linear_cli.api import GraphQLAPIError, fetch_viewer
 from linear_cli.config import get_config_path, write_api_key_to_config
+from linear_cli.errors import emit_api_error
 
 
 def login(
@@ -28,9 +29,8 @@ def login(
 
     try:
         viewer = fetch_viewer(api_key)
-    except httpx.HTTPStatusError:
-        typer.echo("error: API key 验证失败", err=True)
-        raise typer.Exit(1) from None
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
 
     config_path = get_config_path()
     write_api_key_to_config(config_path, api_key)
