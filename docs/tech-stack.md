@@ -56,8 +56,8 @@ click 的零依赖优势在这个薄 CLI 中不构成决定性因素。
 - **Spinner**：网络请求时显示 loading 动画。
 - **异常美化**：traceback 带语法高亮，调试省事。
 
-**与 Agent 模式的配合**：`--json` 时绕过 rich 输出纯 JSON；rich 自动检测 TTY，
-管道/重定向时自动去掉颜色控制符，不污染 Agent 读到的文本。
+**与 Agent 模式的配合**：默认输出纯 JSON，`--pretty` 才走 rich 渲染；rich
+自动检测 TTY，管道/重定向时自动去掉颜色控制符，不污染 Agent 读到的文本。
 
 ### 认证
 
