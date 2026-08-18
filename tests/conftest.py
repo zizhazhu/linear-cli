@@ -188,8 +188,30 @@ ISSUE_LABELS_RESPONSE = {
     "data": {
         "issueLabels": {
             "nodes": [
-                {"id": "label-id-bug", "name": "Bug", "color": "#EB5757"},
-                {"id": "label-id-feature", "name": "Feature", "color": "#BB87FC"},
+                {
+                    "id": "label-id-bug",
+                    "name": "Bug",
+                    "color": "#EB5757",
+                    "team": None,
+                },
+                {
+                    "id": "label-id-feature",
+                    "name": "Feature",
+                    "color": "#BB87FC",
+                    "team": None,
+                },
+                {
+                    "id": "label-id-cli",
+                    "name": "cli",
+                    "color": "#4EA7FC",
+                    "team": {"id": "team-id-tes"},
+                },
+                {
+                    "id": "label-id-other",
+                    "name": "other-only",
+                    "color": "#999999",
+                    "team": {"id": "team-id-abc"},
+                },
             ]
         }
     }
@@ -257,6 +279,17 @@ CREATE_COMMENT_RESPONSE = {
 }
 
 DELETE_COMMENT_RESPONSE = {"data": {"commentDelete": {"success": True}}}
+
+CREATE_LABEL_RESPONSE = {
+    "data": {
+        "issueLabelCreate": {
+            "success": True,
+            "issueLabel": {"id": "label-id-new", "name": "cli-new"},
+        }
+    }
+}
+
+DELETE_LABEL_RESPONSE = {"data": {"issueLabelDelete": {"success": True}}}
 
 # issues 列表查询的样例响应：两条 issue，其二 assignee 为 null
 ISSUE_LIST_NODES = [

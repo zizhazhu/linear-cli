@@ -8,6 +8,7 @@
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 from dotenv import dotenv_values, find_dotenv
 
@@ -41,3 +42,19 @@ def require_real_api_key(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("LINEAR_API_KEY", _REAL_API_KEY)
     write_api_key_to_config(config_path, _REAL_API_KEY)
     return _REAL_API_KEY
+
+
+def delete_issue_label(api_key: str, label_id: str) -> None:
+    """删除 issue 标签（测试清理用；命令面不含标签删除）。
+
+    独立于被测代码直连 GraphQL，避免为清理手段往生产模块塞测试专用函数。
+    """
+    response = httpx.post(
+        "https://api.linear.app/graphql",
+        json={
+            "query": "mutation($id: String!) { issueLabelDelete(id: $id) { success } }",
+            "variables": {"id": label_id},
+        },
+        headers={"Authorization": api_key},
+    )
+    response.raise_for_status()
