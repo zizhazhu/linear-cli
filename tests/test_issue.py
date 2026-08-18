@@ -7,16 +7,24 @@ import respx
 from conftest import (
     ACCOUNT_ERROR_RESPONSE,
     CREATE_ISSUE_RESPONSE,
+    CYCLES_RESPONSE,
     EMPTY_ISSUES_RESPONSE,
     FAKE_API_KEY,
     GRAPHQL_ERROR_RESPONSE,
     GRAPHQL_URL,
     ISSUE,
+    ISSUE_LABELS_RESPONSE,
     ISSUE_LIST,
     ISSUE_RESPONSE,
+    ISSUE_UPDATE_RESPONSE,
     ISSUES_RESPONSE,
+    PROJECTS_RESPONSE,
+    TEAM_STATES_RESPONSE,
     TEAMS_NO_MATCH_RESPONSE,
     TEAMS_RESPONSE,
+    USERS_RESPONSE,
+    VIEWER,
+    VIEWER_RESPONSE,
     error_envelope,
 )
 from real_api import require_real_api_key
@@ -629,6 +637,421 @@ def test_list_invalid_order_by_usage_error(config_path) -> None:
 
 
 @respx.mock
+def test_update_requires_at_least_one_field(config_path) -> None:
+    """Given 已登录
+    When issue update 不带任何字段 flag
+    Then 报用法错误（exit 2），不调用 API（部分更新语义要求至少一个字段）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+
+    result = runner.invoke(app, ["issue", "update", "TES-123"])
+
+    assert result.exit_code == 2
+    assert not respx.calls
+
+
+@respx.mock
+def test_update_not_logged_in_errors_without_api(config_path) -> None:
+    """Given 配置文件不存在（未登录）
+    When issue update --title T
+    Then 退出码 1，stderr 输出 type 为 auth 的错误信封，且不调用 API
+    """
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--title", "T"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "auth"
+    assert "linear login" in "; ".join(error["messages"])
+    assert not respx.calls
+
+
+@respx.mock
+def test_update_invalid_priority_usage_error(config_path) -> None:
+    """Given 已登录
+    When issue update --priority 9（超出 0-4）
+    Then 报用法错误（exit 2），不调用 API
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+
+    result = runner.invoke(
+        app, ["issue", "update", "TES-123", "--priority", "9"]
+    )
+
+    assert result.exit_code == 2
+    assert not respx.calls
+
+
+@respx.mock
+def test_update_unknown_issue_not_found_before_mutation(config_path) -> None:
+    """Given 已登录且标识 TES-999 不存在（issue 节点返回 null）
+    When issue update TES-999 --title T
+    Then 退出码 1，stderr 输出 type 为 not_found 的错误信封，messages 含标识
+    原文，且只发 issue 查询、不发任何解析查询与 mutation
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route({"query Issue(": httpx.Response(200, json={"data": {"issue": None}})})
+
+    result = runner.invoke(app, ["issue", "update", "TES-999", "--title", "T"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "TES-999" in "; ".join(error["messages"])
+    sent_queries = [
+        json.loads(call.request.content)["query"] for call in respx.calls
+    ]
+    assert len(sent_queries) == 1
+    assert sent_queries[0].startswith("query Issue(")
+
+
+@respx.mock
+def test_update_title_body_sends_only_those_fields(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When issue update --title/--body（其余字段不传）
+    Then mutation 变量 input 恰只含 title 与 description（部分更新语义：
+    未传字段不动），stdout 为 view 字段集的更新后 issue JSON
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        ["issue", "update", "TES-123", "--title", "New title", "--body", "New body"],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == ISSUE
+    mutation_call = next(
+        call
+        for call in respx.calls
+        if json.loads(call.request.content)["query"].startswith(
+            "mutation IssueUpdate("
+        )
+    )
+    variables = json.loads(mutation_call.request.content)["variables"]
+    assert variables["id"] == ISSUE["id"]
+    assert variables["input"] == {"title": "New title", "description": "New body"}
+
+
+@respx.mock
+def test_update_priority_and_due_date_passthrough(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When issue update --priority 2 --due-date 2026-12-31
+    Then input 恰为 {priority: 2, dueDate: "2026-12-31"}（数值与日期字符串
+    原样透传，不做本地格式化）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        ["issue", "update", "TES-123", "--priority", "2", "--due-date", "2026-12-31"],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    variables = _last_variables()
+    assert variables["input"] == {"priority": 2, "dueDate": "2026-12-31"}
+
+
+@respx.mock
+def test_update_state_resolves_to_team_state_id(config_path) -> None:
+    """Given 已登录且目标 issue 存在，其 team 有状态 In Progress
+    When issue update --state "In Progress"
+    Then 先查 issue 拿 team id，再查该 team 的 states，input.stateId 为名称
+    匹配（忽略大小写）状态的 UUID——写入前客户端解析
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query TeamStates(": httpx.Response(200, json=TEAM_STATES_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app, ["issue", "update", "TES-123", "--state", "in progress"]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    states_call = next(
+        call
+        for call in respx.calls
+        if json.loads(call.request.content)["query"].startswith(
+            "query TeamStates("
+        )
+    )
+    assert (
+        json.loads(states_call.request.content)["variables"]
+        == {"teamId": ISSUE["team"]["id"]}
+    )
+    assert _last_variables()["input"] == {"stateId": "state-id-started"}
+
+
+@respx.mock
+def test_update_state_matches_type_when_name_misses(config_path) -> None:
+    """Given team 状态无名为 completed 的状态，但有 type 为 completed 的状态
+    When issue update --state completed
+    Then input.stateId 为按 type 匹配到的状态 UUID
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query TeamStates(": httpx.Response(200, json=TEAM_STATES_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--state", "completed"])
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"] == {"stateId": "state-id-done"}
+
+
+@respx.mock
+def test_update_unknown_state_not_found_before_mutation(config_path) -> None:
+    """Given team 状态里没有 NoState
+    When issue update --state NoState
+    Then 退出码 1，stderr 输出 type 为 not_found 的错误信封，messages 含用户
+    输入原文 NoState，且只发 issue 与 states 查询、不发 mutation（写入前
+    确定性报错）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query TeamStates(": httpx.Response(200, json=TEAM_STATES_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--state", "NoState"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "NoState" in "; ".join(error["messages"])
+    sent_queries = [
+        json.loads(call.request.content)["query"] for call in respx.calls
+    ]
+    assert len(sent_queries) == 2
+    assert not any(q.startswith("mutation IssueUpdate(") for q in sent_queries)
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "assignee_value", ["Test User", "testuser", "test@example.com"]
+)
+def test_update_assignee_matches_name_displayname_email(
+    config_path, assignee_value: str
+) -> None:
+    """Given 工作区有用户 Test User（displayName testuser，邮箱 test@example.com）
+    When issue update --assignee 分别传名称 / displayName / 邮箱
+    Then input.assigneeId 均解析为该用户 UUID（名称类忽略大小写、邮箱精确）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query Users": httpx.Response(200, json=USERS_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app, ["issue", "update", "TES-123", "--assignee", assignee_value]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"] == {"assigneeId": "user-id-1"}
+
+
+@respx.mock
+def test_update_assignee_me_resolves_viewer(config_path) -> None:
+    """Given 当前 viewer 为 Test User
+    When issue update --assignee me
+    Then 发 viewer 查询，input.assigneeId 为 viewer 的 UUID（不做用户列表匹配）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query Viewer": httpx.Response(200, json=VIEWER_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--assignee", "me"])
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"] == {"assigneeId": VIEWER["id"]}
+
+
+@respx.mock
+def test_update_unknown_assignee_not_found_before_mutation(config_path) -> None:
+    """Given 工作区没有名为 Ghost 的用户
+    When issue update --assignee Ghost
+    Then 退出码 1，not_found 信封含原文 Ghost，不发 mutation
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query Users": httpx.Response(200, json=USERS_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--assignee", "Ghost"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "Ghost" in "; ".join(error["messages"])
+    assert not any(
+        json.loads(call.request.content)["query"].startswith(
+            "mutation IssueUpdate("
+        )
+        for call in respx.calls
+    )
+
+
+@respx.mock
+def test_update_label_adds_resolved_label(config_path) -> None:
+    """Given 工作区有标签 Bug
+    When issue update --label bug
+    Then input.addedLabelIds 为解析出的标签 UUID 裸字符串（API 实测只收裸
+    UUID，JSON 数组串会被拒）——贴标签语义，已有标签不受影响
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query IssueLabels": httpx.Response(200, json=ISSUE_LABELS_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--label", "bug"])
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"] == {"addedLabelIds": "label-id-bug"}
+
+
+@respx.mock
+def test_update_unknown_label_not_found_before_mutation(config_path) -> None:
+    """Given 工作区没有名为 NoSuchLabel 的标签
+    When issue update --label NoSuchLabel
+    Then 退出码 1，not_found 信封含原文，不发 mutation
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query IssueLabels": httpx.Response(200, json=ISSUE_LABELS_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app, ["issue", "update", "TES-123", "--label", "NoSuchLabel"]
+    )
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "not_found"
+    assert "NoSuchLabel" in "; ".join(error["messages"])
+    assert not any(
+        json.loads(call.request.content)["query"].startswith(
+            "mutation IssueUpdate("
+        )
+        for call in respx.calls
+    )
+
+
+@respx.mock
+def test_update_project_and_cycle_resolve(config_path) -> None:
+    """Given 工作区有项目 dotfiles，issue 所属 team 有 Cycle 3
+    When issue update --project dotfiles --cycle 3
+    Then input.projectId / cycleId 为解析出的 UUID（项目按名称忽略大小写，
+    Cycle 先按编号、再按名称）
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "query Projects": httpx.Response(200, json=PROJECTS_RESPONSE),
+            "query Cycles(": httpx.Response(200, json=CYCLES_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        ["issue", "update", "TES-123", "--project", "DOTFILES", "--cycle", "3"],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert _last_variables()["input"] == {
+        "projectId": "project-id-1",
+        "cycleId": "cycle-id-3",
+    }
+
+
+@respx.mock
+def test_update_pretty_prints_like_view(config_path) -> None:
+    """Given 已登录且更新成功
+    When issue update --pretty
+    Then 输出与 view --pretty 同构：首行「标识 标题」，随后为正文原文
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(
+        app, ["issue", "update", "TES-123", "--title", "T", "--pretty"]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert "TES-123 Test issue" in result.output
+    assert "Body line 1\nBody line 2" in result.output
+
+
+@respx.mock
+def test_update_graphql_error_uses_shared_envelope(config_path) -> None:
+    """Given mutation 响应含 GraphQL errors
+    When issue update
+    Then 退出码 1，stderr 输出共享的 graphql 错误信封
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation IssueUpdate(": httpx.Response(200, json=GRAPHQL_ERROR_RESPONSE),
+        }
+    )
+
+    result = runner.invoke(app, ["issue", "update", "TES-123", "--title", "T"])
+
+    assert result.exit_code == 1
+    error = error_envelope(result)
+    assert error["type"] == "graphql"
+    assert error["messages"] == ["Record not found", "Secondary error message"]
+
+
+@respx.mock
 def test_view_prints_graphql_error_messages_verbatim(config_path) -> None:
     """Given Linear 响应含多条 GraphQL errors
     When 执行 issue view
@@ -836,3 +1259,65 @@ def test_list_filters_roundtrip_real_api(config_path, monkeypatch) -> None:
     view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
     assert view_result.exit_code == 0, view_result.stderr
     archive_issue(api_key, json.loads(view_result.output)["id"])
+
+
+def test_update_roundtrip_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key 与一条新建 issue
+    When update --title/--body/--state Todo/--priority/--label bug/--due-date/
+         --assignee me，随后 view 读回
+    Then 更新输出与读回满足 view 契约且逐字一致（title/body 逐字、
+    state.name/priority/labels/dueDate/assignee 读回一致，名称解析忽略
+    大小写：bug → Bug）；断言通过后归档（失败保留现场）
+    """
+    api_key = require_real_api_key(config_path, monkeypatch)
+    run_id = uuid.uuid4().hex[:8]
+    create_result = runner.invoke(
+        app,
+        ["issue", "create", "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x"],
+    )
+    assert create_result.exit_code == 0, create_result.stderr
+    created = json.loads(create_result.output)
+    new_title = f"updated-{run_id}"
+    # 不以换行结尾：Linear 服务端会规范化描述的尾部空白（见 create roundtrip）
+    new_body = "更新正文\n\n* 列表项"
+
+    try:
+        update_result = runner.invoke(
+            app,
+            [
+                "issue", "update", created["identifier"],
+                "--title", new_title,
+                "--body", new_body,
+                "--state", "todo",
+                "--priority", "2",
+                "--label", "bug",
+                "--due-date", "2026-12-31",
+                "--assignee", "me",
+            ],
+        )
+        assert update_result.exit_code == 0, update_result.stderr
+        updated = json.loads(update_result.output)
+        assert updated["identifier"] == created["identifier"]
+        assert updated["title"] == new_title
+        assert updated["description"] == new_body
+        assert updated["state"]["name"] == "Todo"
+        assert updated["priority"] == 2
+        assert updated["labels"] == ["Bug"]
+        assert updated["dueDate"] == "2026-12-31"
+        assert updated["assignee"]["name"]
+
+        view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+        assert view_result.exit_code == 0, view_result.stderr
+        read_back = json.loads(view_result.output)
+        assert read_back["title"] == new_title
+        assert read_back["description"] == new_body
+        assert read_back["state"]["name"] == "Todo"
+        assert read_back["priority"] == 2
+        assert read_back["labels"] == ["Bug"]
+        assert read_back["dueDate"] == "2026-12-31"
+        assert read_back["assignee"]["id"]
+    except Exception:
+        # 断言失败保留现场，不归档
+        raise
+
+    archive_issue(api_key, updated["id"])

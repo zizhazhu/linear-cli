@@ -125,7 +125,106 @@ CREATE_ISSUE_RESPONSE = {
     "data": {"issueCreate": {"success": True, "issue": ISSUE_NODE}}
 }
 
+ISSUE_UPDATE_RESPONSE = {
+    "data": {"issueUpdate": {"success": True, "issue": ISSUE_NODE}}
+}
+
 ISSUE_RESPONSE = {"data": {"issue": ISSUE_NODE}}
+
+# 取值解析（update 的客户端名称 → UUID 解析）所需的查询层样例响应
+TEAM_STATES_RESPONSE = {
+    "data": {
+        "team": {
+            "states": {
+                "nodes": [
+                    {
+                        "id": "state-id-todo",
+                        "name": "Todo",
+                        "type": "unstarted",
+                        "position": 1.0,
+                    },
+                    {
+                        "id": "state-id-started",
+                        "name": "In Progress",
+                        "type": "started",
+                        "position": 2.0,
+                    },
+                    {
+                        "id": "state-id-done",
+                        "name": "Done",
+                        "type": "completed",
+                        "position": 3.0,
+                    },
+                ]
+            },
+        }
+    }
+}
+
+USERS_RESPONSE = {
+    "data": {
+        "users": {
+            "nodes": [
+                {
+                    "id": "user-id-1",
+                    "name": "Test User",
+                    "displayName": "testuser",
+                    "email": "test@example.com",
+                    "active": True,
+                },
+                {
+                    "id": "user-id-2",
+                    "name": "Other User",
+                    "displayName": "otheruser",
+                    "email": "other@example.com",
+                    "active": True,
+                },
+            ]
+        }
+    }
+}
+
+ISSUE_LABELS_RESPONSE = {
+    "data": {
+        "issueLabels": {
+            "nodes": [
+                {"id": "label-id-bug", "name": "Bug", "color": "#EB5757"},
+                {"id": "label-id-feature", "name": "Feature", "color": "#BB87FC"},
+            ]
+        }
+    }
+}
+
+PROJECTS_RESPONSE = {
+    "data": {
+        "projects": {
+            "nodes": [
+                {
+                    "id": "project-id-1",
+                    "name": "dotfiles",
+                    "url": "https://linear.app/acme/project/dotfiles-x1y2",
+                    "state": "started",
+                }
+            ]
+        }
+    }
+}
+
+CYCLES_RESPONSE = {
+    "data": {
+        "cycles": {
+            "nodes": [
+                {
+                    "id": "cycle-id-3",
+                    "number": 3,
+                    "name": "Cycle 3",
+                    "startsAt": "2026-08-10T00:00:00.000Z",
+                    "endsAt": "2026-08-16T23:59:59.999Z",
+                }
+            ]
+        }
+    }
+}
 
 # issues 列表查询的样例响应：两条 issue，其二 assignee 为 null
 ISSUE_LIST_NODES = [
