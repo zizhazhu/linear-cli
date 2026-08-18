@@ -1,5 +1,7 @@
 """Linear GraphQL API 客户端。"""
 
+import re
+
 import httpx
 
 GRAPHQL_URL = "https://api.linear.app/graphql"
@@ -102,8 +104,18 @@ query Issue($id: String!) {
 """
 
 _ISSUES_QUERY = """
-query Issues($first: Int!) {
-  issues(first: $first) {
+query Issues(
+  $first: Int!
+  $orderBy: PaginationOrderBy!
+  $includeArchived: Boolean!
+  $filter: IssueFilter
+) {
+  issues(
+    first: $first
+    orderBy: $orderBy
+    includeArchived: $includeArchived
+    filter: $filter
+  ) {
     nodes {
       identifier
       title
@@ -211,13 +223,118 @@ def fetch_issue(api_key: str, issue_id: str) -> dict | None:
     return data["data"]["issue"]
 
 
-def fetch_issues(api_key: str, first: int) -> list[dict]:
-    """拉取工作区 issue 列表，最多 ``first`` 条。
+_UUID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+
+
+def _or(branches: list[dict]) -> dict:
+    """单分支直接返回该分支，多分支才包 ``or``。"""
+    return branches[0] if len(branches) == 1 else {"or": branches}
+
+
+def _match_any(value: str, *fields: tuple[str, str]) -> dict:
+    """构造「任一字段匹配 value」的过滤分支。
+
+    ``fields`` 为 (字段名, 比较器) 对；值形如 UUID 时自动在最前附
+    ``(id, eq)`` 分支——服务端 id 比较器校验 UUID 形态，非 UUID 值进去
+    会被直接拒绝。
+    """
+    branches = [{name: {comparator: value}} for name, comparator in fields]
+    if _UUID_RE.fullmatch(value):
+        branches.insert(0, {"id": {"eq": value}})
+    return _or(branches)
+
+
+def build_issue_filter(
+    team: str | None = None,
+    state: str | None = None,
+    assignee: str | None = None,
+    label: str | None = None,
+    project: str | None = None,
+    cycle: str | None = None,
+    query: str | None = None,
+    created_at: str | None = None,
+    updated_at: str | None = None,
+) -> dict | None:
+    """把 ``issue list`` 的 filter flags 组装为 ``IssueFilter`` 变量。
+
+    值形态对齐 MCP 入参语义（经 GraphQL API 实测确认）：
+    - 名称类匹配用 ``eqIgnoreCase``；
+    - ``assignee`` 支持 ``me``（``isMe``）、名称、邮箱（值含 ``@`` 时）；
+    - ``query`` 用 title/description 的 ``containsIgnoreCase``——顶层
+      ``issueSearch`` 已被 API 弃用，原生比较器等价实现「搜索标题/正文」；
+    - 日期值原样透传给 ``gte``：服务端接受 ISO-8601 日期与 ``-P1D`` 类
+      时长，非法格式由服务端校验报错。
+
+    全部入参为空时返回 ``None``（请求不带 filter，即匹配全部）；
+    顶层多键为 AND 语义。
+    """
+    filter_: dict[str, dict] = {}
+    if team:
+        filter_["team"] = _match_any(
+            team, ("key", "eqIgnoreCase"), ("name", "eqIgnoreCase")
+        )
+    if state:
+        filter_["state"] = _match_any(
+            state, ("name", "eqIgnoreCase"), ("type", "eq")
+        )
+    if assignee == "me":
+        filter_["assignee"] = {"isMe": {"eq": True}}
+    elif assignee:
+        fields = [("name", "eqIgnoreCase")]
+        if "@" in assignee:
+            fields.append(("email", "eq"))
+        filter_["assignee"] = _match_any(assignee, *fields)
+    if label:
+        filter_["labels"] = {"some": _match_any(label, ("name", "eqIgnoreCase"))}
+    if project:
+        filter_["project"] = _match_any(
+            project, ("name", "eqIgnoreCase"), ("slugId", "eq")
+        )
+    if cycle:
+        branches = [{"name": {"eqIgnoreCase": cycle}}]
+        if cycle.isdigit():
+            branches.append({"number": {"eq": int(cycle)}})
+        if _UUID_RE.fullmatch(cycle):
+            branches.insert(0, {"id": {"eq": cycle}})
+        filter_["cycle"] = _or(branches)
+    if query:
+        filter_["or"] = [
+            {"title": {"containsIgnoreCase": query}},
+            {"description": {"containsIgnoreCase": query}},
+        ]
+    if created_at:
+        filter_["createdAt"] = {"gte": created_at}
+    if updated_at:
+        filter_["updatedAt"] = {"gte": updated_at}
+    return filter_ or None
+
+
+def fetch_issues(
+    api_key: str,
+    first: int,
+    issue_filter: dict | None = None,
+    order_by: str = "updatedAt",
+    include_archived: bool = False,
+) -> list[dict]:
+    """拉取工作区 issue 列表，最多 ``first`` 条，按 ``issue_filter`` 过滤。
+
+    ``issue_filter`` 由 :func:`build_issue_filter` 构造；``order_by`` 缺省
+    updatedAt（与 MCP 缺省一致），``include_archived`` 缺省 False 并始终
+    显式传递（API 缺省同为不含归档，显式传递消除歧义）。
 
     返回节点即输出契约：view 字段集的子集（identifier/title/url/
     state/priority/assignee/updatedAt），``assignee`` 可空原样为 null。
     """
-    return _post(api_key, _ISSUES_QUERY, {"first": first})["data"]["issues"]["nodes"]
+    variables: dict[str, object] = {
+        "first": first,
+        "orderBy": order_by,
+        "includeArchived": include_archived,
+    }
+    if issue_filter:
+        variables["filter"] = issue_filter
+    return _post(api_key, _ISSUES_QUERY, variables)["data"]["issues"]["nodes"]
 
 
 def archive_issue(api_key: str, issue_id: str) -> None:

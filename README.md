@@ -51,6 +51,24 @@ $ linear issue list --limit 10
 
 `--pretty` 以表格渲染。
 
+支持的过滤 flag（可组合，AND 语义）：
+
+```console
+$ linear issue list --team TES --state "In Progress" --assignee me --updated-at=-P1D
+$ linear issue list --query "关键词" --order-by createdAt --limit 10
+```
+
+| flag | 取值 |
+|------|------|
+| `--team` | Team 缩写、名称或 UUID |
+| `--state` | 状态名称、类型（如 started/backlog）或 UUID |
+| `--assignee` | 负责人名称、邮箱、UUID 或 `me` |
+| `--label` / `--project` / `--cycle` | 标签 / 项目（名称、slug 或 UUID）/ Cycle（编号、名称或 UUID） |
+| `--query` | 关键词，搜索标题与正文 |
+| `--created-at` / `--updated-at` | 时间下界：ISO-8601 日期或 `-P1D` 类时长（负前缀值需用 `--created-at=-P1D` 形式） |
+| `--order-by` | `updatedAt`（默认）或 `createdAt` |
+| `--include-archived` | 默认不含归档，置位才包含 |
+
 ## 配置
 
 配置文件路径按以下优先级解析（全平台统一）：

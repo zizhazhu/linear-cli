@@ -1,6 +1,7 @@
-"""``issue`` 命令组：create 与 view。"""
+"""``issue`` 命令组：create、view 与 list。"""
 
 import json
+from enum import Enum
 
 import httpx
 import typer
@@ -10,6 +11,7 @@ from rich.table import Table
 from linear_cli.api import (
     GraphQLAPIError,
     TeamNotFoundError,
+    build_issue_filter,
     create_issue,
     fetch_issue,
     fetch_issues,
@@ -26,6 +28,13 @@ issue_app = typer.Typer(
     help="操作 Linear issue。",
     no_args_is_help=True,
 )
+
+
+class IssueOrderBy(str, Enum):
+    """``issue list --order-by`` 的合法排序键（与 API 的 PaginationOrderBy 对齐）。"""
+
+    createdAt = "createdAt"
+    updatedAt = "updatedAt"
 
 
 def _resolve_api_key_or_exit() -> str:
@@ -107,17 +116,65 @@ def view(
 
 @issue_app.command("list")
 def list_issues(
-    limit: int = typer.Option(
-        50, "--limit", help="最多返回的 issue 数。"
+    team: str = typer.Option(None, "--team", help="Team 缩写、名称或 UUID。"),
+    state: str = typer.Option(
+        None, "--state", help="状态名称、类型（如 started/backlog）或 UUID。"
+    ),
+    assignee: str = typer.Option(
+        None, "--assignee", help="负责人名称、邮箱、UUID 或 me。"
+    ),
+    label: str = typer.Option(None, "--label", help="标签名称或 UUID。"),
+    project: str = typer.Option(
+        None, "--project", help="项目名称、slug 或 UUID。"
+    ),
+    cycle: str = typer.Option(None, "--cycle", help="Cycle 编号、名称或 UUID。"),
+    query: str = typer.Option(None, "--query", help="按关键词搜索标题与正文。"),
+    created_at: str = typer.Option(
+        None,
+        "--created-at",
+        help="创建时间下界：ISO-8601 日期或 -P1D 类时长（负前缀值需用 "
+        "--created-at=-P1D 形式）。",
+    ),
+    updated_at: str = typer.Option(
+        None,
+        "--updated-at",
+        help="更新时间下界：ISO-8601 日期或 -P1D 类时长（负前缀值需用 "
+        "--updated-at=-P1D 形式）。",
+    ),
+    limit: int = typer.Option(50, "--limit", help="最多返回的 issue 数。"),
+    order_by: IssueOrderBy = typer.Option(
+        IssueOrderBy.updatedAt,
+        "--order-by",
+        help="排序键：updatedAt（默认）或 createdAt。",
+    ),
+    include_archived: bool = typer.Option(
+        False, "--include-archived", help="包含已归档的 issue（默认不含）。"
     ),
     pretty: bool = typer.Option(
         False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
     ),
 ) -> None:
-    """列出工作区的 issue。"""
+    """按过滤条件列出工作区的 issue。"""
     api_key = _resolve_api_key_or_exit()
+    issue_filter = build_issue_filter(
+        team=team,
+        state=state,
+        assignee=assignee,
+        label=label,
+        project=project,
+        cycle=cycle,
+        query=query,
+        created_at=created_at,
+        updated_at=updated_at,
+    )
     try:
-        issues = fetch_issues(api_key, limit)
+        issues = fetch_issues(
+            api_key,
+            limit,
+            issue_filter=issue_filter,
+            order_by=order_by.value,
+            include_archived=include_archived,
+        )
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
