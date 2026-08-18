@@ -50,10 +50,8 @@ mutation IssueCreate($teamId: String!, $title: String!, $description: String) {
 }
 """
 
-_ISSUE_QUERY = """
-query Issue($id: String!) {
-  issue(id: $id) {
-    id
+# view / update 共用的 issue 字段选择集（update 的 mutation 载荷复用同集）
+_ISSUE_FIELDS = """    id
     identifier
     url
     title
@@ -99,8 +97,23 @@ query Issue($id: String!) {
     startedAt
     canceledAt
     dueDate
-  }
-}
+"""
+
+_ISSUE_QUERY = f"""
+query Issue($id: String!) {{
+  issue(id: $id) {{
+{_ISSUE_FIELDS}  }}
+}}
+"""
+
+_UPDATE_ISSUE_MUTATION = f"""
+mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {{
+  issueUpdate(id: $id, input: $input) {{
+    success
+    issue {{
+{_ISSUE_FIELDS}    }}
+  }}
+}}
 """
 
 _ISSUES_QUERY = """
@@ -164,15 +177,26 @@ class TeamNotFoundError(Exception):
         super().__init__(f"Team {key!r} 不存在")
 
 
+class EntityNotFoundError(Exception):
+    """把名称解析为 UUID 失败（状态/负责人/标签/项目/Cycle）时抛出。"""
+
+    def __init__(self, kind: str, value: str) -> None:
+        self.kind = kind
+        self.value = value
+        super().__init__(f"{kind} {value!r} 不存在")
+
+
 def _post(api_key: str, query: str, variables: dict[str, object]) -> dict:
     """POST 一条 GraphQL 操作。
 
+    query 常量的三引号缩进在发送前 strip，使请求正文以操作名开头
+    （测试按 ``query Xxx(`` / ``mutation Xxx(`` 前缀识别操作）。
     HTTP 非 2xx 抛 ``httpx.HTTPStatusError``（调用方从 ``.response.text`` 读原始正文）；
     响应含 GraphQL ``errors`` 时抛 ``GraphQLAPIError``。
     """
     response = httpx.post(
         GRAPHQL_URL,
-        json={"query": query, "variables": variables},
+        json={"query": query.strip(), "variables": variables},
         headers={"Authorization": api_key},
     )
     response.raise_for_status()
@@ -215,6 +239,75 @@ def create_issue(
         {"teamId": team["id"], "title": title, "description": description},
     )
     return data["data"]["issueCreate"]["issue"]
+
+
+_TEAM_STATES_QUERY = """
+query TeamStates($teamId: String!) {
+  team(id: $teamId) {
+    states {
+      nodes {
+        id
+        name
+        type
+        position
+      }
+    }
+  }
+}
+"""
+
+_USERS_QUERY = """
+query Users {
+  users {
+    nodes {
+      id
+      name
+      displayName
+      email
+      active
+    }
+  }
+}
+"""
+
+_ISSUE_LABELS_QUERY = """
+query IssueLabels {
+  issueLabels {
+    nodes {
+      id
+      name
+      color
+    }
+  }
+}
+"""
+
+_PROJECTS_QUERY = """
+query Projects {
+  projects {
+    nodes {
+      id
+      name
+      url
+      state
+    }
+  }
+}
+"""
+
+_CYCLES_QUERY = """
+query Cycles($teamId: String!) {
+  cycles(filter: {team: {id: {eq: $teamId}}}) {
+    nodes {
+      id
+      number
+      name
+      startsAt
+      endsAt
+    }
+  }
+}
+"""
 
 
 def fetch_issue(api_key: str, issue_id: str) -> dict | None:
@@ -335,6 +428,172 @@ def fetch_issues(
     if issue_filter:
         variables["filter"] = issue_filter
     return _post(api_key, _ISSUES_QUERY, variables)["data"]["issues"]["nodes"]
+
+
+def fetch_team_states(api_key: str, team_id: str) -> list[dict]:
+    """拉取指定 team 的工作流状态（id/name/type/position）。"""
+    data = _post(api_key, _TEAM_STATES_QUERY, {"teamId": team_id})
+    return data["data"]["team"]["states"]["nodes"]
+
+
+def fetch_users(api_key: str) -> list[dict]:
+    """拉取工作区用户（id/name/displayName/email/active）。"""
+    return _post(api_key, _USERS_QUERY, {})["data"]["users"]["nodes"]
+
+
+def fetch_issue_labels(api_key: str) -> list[dict]:
+    """拉取工作区 issue 标签（id/name/color）。"""
+    return _post(api_key, _ISSUE_LABELS_QUERY, {})["data"]["issueLabels"]["nodes"]
+
+
+def fetch_projects(api_key: str) -> list[dict]:
+    """拉取工作区项目（id/name/url/state）。"""
+    return _post(api_key, _PROJECTS_QUERY, {})["data"]["projects"]["nodes"]
+
+
+def fetch_team_cycles(api_key: str, team_id: str) -> list[dict]:
+    """拉取指定 team 的 Cycle（id/number/name/startsAt/endsAt）。"""
+    return _post(api_key, _CYCLES_QUERY, {"teamId": team_id})["data"]["cycles"][
+        "nodes"
+    ]
+
+
+def _resolve_state(api_key: str, team_id: str, value: str) -> str:
+    """把状态取值（名称忽略大小写，其次 type）解析为该 team 内的状态 UUID。"""
+    if _UUID_RE.fullmatch(value):
+        return value
+    states = fetch_team_states(api_key, team_id)
+    lowered = value.lower()
+    match = next(
+        (s for s in states if s["name"].lower() == lowered),
+        None,
+    ) or next((s for s in states if s["type"].lower() == lowered), None)
+    if match is None:
+        raise EntityNotFoundError("状态", value)
+    return match["id"]
+
+
+def _resolve_assignee(api_key: str, value: str) -> str:
+    """把负责人取值解析为用户 UUID：UUID 原样、me 走 viewer、其余按名称
+    （name/displayName，忽略大小写）或邮箱（精确）在用户列表匹配。"""
+    if _UUID_RE.fullmatch(value):
+        return value
+    if value == "me":
+        return fetch_viewer(api_key)["id"]
+    users = fetch_users(api_key)
+    lowered = value.lower()
+    match = next(
+        (
+            u
+            for u in users
+            if u["name"].lower() == lowered
+            or u["displayName"].lower() == lowered
+            or u["email"] == value
+        ),
+        None,
+    )
+    if match is None:
+        raise EntityNotFoundError("负责人", value)
+    return match["id"]
+
+
+def _resolve_label(api_key: str, value: str) -> str:
+    """把标签取值（名称忽略大小写）解析为标签 UUID。"""
+    if _UUID_RE.fullmatch(value):
+        return value
+    labels = fetch_issue_labels(api_key)
+    match = next(
+        (l for l in labels if l["name"].lower() == value.lower()),
+        None,
+    )
+    if match is None:
+        raise EntityNotFoundError("标签", value)
+    return match["id"]
+
+
+def _resolve_project(api_key: str, value: str) -> str:
+    """把项目取值（名称忽略大小写）解析为项目 UUID。"""
+    if _UUID_RE.fullmatch(value):
+        return value
+    projects = fetch_projects(api_key)
+    match = next(
+        (p for p in projects if p["name"].lower() == value.lower()),
+        None,
+    )
+    if match is None:
+        raise EntityNotFoundError("项目", value)
+    return match["id"]
+
+
+def _resolve_cycle(api_key: str, team_id: str, value: str) -> str:
+    """把 Cycle 取值解析为该 team 内的 Cycle UUID：先按编号（纯数字）、
+    再按名称（忽略大小写）。"""
+    if _UUID_RE.fullmatch(value):
+        return value
+    cycles = fetch_team_cycles(api_key, team_id)
+    match = None
+    if value.isdigit():
+        match = next((c for c in cycles if c["number"] == int(value)), None)
+    if match is None:
+        match = next(
+            (c for c in cycles if c["name"].lower() == value.lower()),
+            None,
+        )
+    if match is None:
+        raise EntityNotFoundError("Cycle", value)
+    return match["id"]
+
+
+def update_issue(
+    api_key: str,
+    issue_id: str,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    state: str | None = None,
+    priority: int | None = None,
+    assignee: str | None = None,
+    label: str | None = None,
+    project: str | None = None,
+    cycle: str | None = None,
+    due_date: str | None = None,
+) -> dict | None:
+    """按标识更新 issue 的指定字段（部分更新语义），返回更新后的 issue 节点。
+
+    未传的字段不动；``body`` 映射 GraphQL ``description`` 逐字透传；
+    ``due_date`` 原样透传（TimelessDate，yyyy-mm-dd）。名称类取值
+    （state/assignee/label/project/cycle）在客户端解析为 UUID，解析失败抛
+    ``EntityNotFoundError``——写入前确定性报错。``label`` 为「贴标签」语义：
+    ``addedLabelIds`` 传裸 UUID 字符串（API 实测只收裸 UUID，JSON 数组串
+    会被拒），不影响 issue 已有标签。标识不存在时返回 ``None``。
+    """
+    issue = fetch_issue(api_key, issue_id)
+    if issue is None:
+        return None
+    team_id = issue["team"]["id"]
+    input_: dict[str, object] = {}
+    if title is not None:
+        input_["title"] = title
+    if body is not None:
+        input_["description"] = body
+    if state is not None:
+        input_["stateId"] = _resolve_state(api_key, team_id, state)
+    if assignee is not None:
+        input_["assigneeId"] = _resolve_assignee(api_key, assignee)
+    if label is not None:
+        input_["addedLabelIds"] = _resolve_label(api_key, label)
+    if project is not None:
+        input_["projectId"] = _resolve_project(api_key, project)
+    if cycle is not None:
+        input_["cycleId"] = _resolve_cycle(api_key, team_id, cycle)
+    if priority is not None:
+        input_["priority"] = priority
+    if due_date is not None:
+        input_["dueDate"] = due_date
+    data = _post(
+        api_key, _UPDATE_ISSUE_MUTATION, {"id": issue["id"], "input": input_}
+    )
+    return data["data"]["issueUpdate"]["issue"]
 
 
 def archive_issue(api_key: str, issue_id: str) -> None:

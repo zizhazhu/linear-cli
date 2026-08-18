@@ -1,4 +1,4 @@
-"""``issue`` 命令组：create、view 与 list。"""
+"""``issue`` 命令组：create、view、list 与 update。"""
 
 import json
 from enum import Enum
@@ -9,12 +9,14 @@ from rich.console import Console
 from rich.table import Table
 
 from linear_cli.api import (
+    EntityNotFoundError,
     GraphQLAPIError,
     TeamNotFoundError,
     build_issue_filter,
     create_issue,
     fetch_issue,
     fetch_issues,
+    update_issue,
 )
 from linear_cli.config import MissingApiKeyError, resolve_api_key
 from linear_cli.errors import (
@@ -182,6 +184,77 @@ def list_issues(
             _print_issues_table(issues)
         else:
             typer.echo(json.dumps(issues, ensure_ascii=False))
+
+
+@issue_app.command("update")
+def update(
+    issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
+    title: str = typer.Option(None, "--title", help="新标题。"),
+    body: str = typer.Option(
+        None, "--body", "-b", help="新正文（Markdown，逐字透传）。"
+    ),
+    state: str = typer.Option(
+        None, "--state", help="目标状态名称、类型（如 started）或 UUID。"
+    ),
+    priority: int = typer.Option(
+        None,
+        "--priority",
+        min=0,
+        max=4,
+        help="优先级：0=None，1=Urgent，2=High，3=Medium，4=Low。",
+    ),
+    assignee: str = typer.Option(
+        None, "--assignee", help="负责人名称、邮箱、UUID 或 me。"
+    ),
+    label: str = typer.Option(
+        None, "--label", help="要贴上的标签名称或 UUID（不影响已有标签）。"
+    ),
+    project: str = typer.Option(None, "--project", help="目标项目名称或 UUID。"),
+    cycle: str = typer.Option(
+        None, "--cycle", help="目标 Cycle 编号、名称或 UUID。"
+    ),
+    due_date: str = typer.Option(
+        None, "--due-date", help="截止日期（yyyy-mm-dd）。"
+    ),
+    pretty: bool = typer.Option(
+        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
+    ),
+) -> None:
+    """更新 issue 的指定字段（未传的字段不动），输出更新后的 issue。"""
+    fields = (title, body, state, priority, assignee, label, project, cycle, due_date)
+    if all(value is None for value in fields):
+        raise typer.BadParameter(
+            "至少提供一个要更新的字段 flag（--title/--body/--state 等）。",
+            param_hint="--title",
+        )
+    api_key = _resolve_api_key_or_exit()
+    try:
+        updated = update_issue(
+            api_key,
+            issue_id,
+            title=title,
+            body=body,
+            state=state,
+            priority=priority,
+            assignee=assignee,
+            label=label,
+            project=project,
+            cycle=cycle,
+            due_date=due_date,
+        )
+    except EntityNotFoundError as exc:
+        emit_not_found_error([f"{exc.kind} {exc.value!r} 不存在。"])
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
+    else:
+        if updated is None:
+            emit_not_found_error([f"issue {issue_id!r} 不存在。"])
+        shaped = _shape_issue(updated)
+        if pretty:
+            typer.echo(f"{shaped['identifier']} {shaped['title']}")
+            typer.echo(shaped['description'])
+        else:
+            typer.echo(json.dumps(shaped, ensure_ascii=False))
 
 
 def _print_issues_table(issues: list[dict]) -> None:

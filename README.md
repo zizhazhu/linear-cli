@@ -69,6 +69,27 @@ $ linear issue list --query "关键词" --order-by createdAt --limit 10
 | `--order-by` | `updatedAt`（默认）或 `createdAt` |
 | `--include-archived` | 默认不含归档，置位才包含 |
 
+## 更新 issue
+
+`update` 只传要改的字段，未传的字段不动；名称类取值（状态/负责人/标签/项目/Cycle）在写入前解析为 UUID，解析不到则确定性报错（`not_found`）。输出更新后的 issue（字段集同 view）：
+
+```console
+$ linear issue update TES-123 --state "In Progress" --priority 2
+{"id": "...", "identifier": "TES-123", ..., "state": {"name": "In Progress", ...}, ...}
+
+$ linear issue update TES-123 --title "新标题" --assignee me --label bug --due-date 2026-12-31
+```
+
+| flag | 说明 |
+|------|------|
+| `--title` / `--body` | 新标题 / 新正文（正文逐字透传） |
+| `--state` | 状态名称、类型（如 started）或 UUID |
+| `--priority` | 0=None，1=Urgent，2=High，3=Medium，4=Low |
+| `--assignee` | 负责人名称、邮箱、UUID 或 `me` |
+| `--label` | 贴一个标签（名称或 UUID），不影响已有标签；尚无该标签时先 `linear label create` |
+| `--project` / `--cycle` | 项目名称或 UUID / Cycle 编号、名称或 UUID |
+| `--due-date` | 截止日期（yyyy-mm-dd） |
+
 ## 配置
 
 配置文件路径按以下优先级解析（全平台统一）：
