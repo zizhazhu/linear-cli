@@ -250,6 +250,6 @@ attachment 即 PR 链接），Linear 侧只做状态跟踪，不做审查。
 
 ## 与合约点清单的关系
 
-每条命令实现时，其真实 API 合约点清单按 AGENTS.md 规约写进对应 Linear
-issue（打在 LIC team），文档不重复维护合约点。本文档只回答「有哪些命令、
-每条命令的形态与语义」。
+合约点清单直接体现在测试代码中：每个合约点恰好一条真实 API 测试，意图
+以 Given/When/Then 写进 docstring，测试即清单。不另建 Linear issue 承载。
+本文档只回答「有哪些命令、每条命令的形态与语义」。
