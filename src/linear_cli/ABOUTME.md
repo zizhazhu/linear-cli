@@ -20,6 +20,6 @@
 | `config.py` | 配置路径解析（`LINEAR_CONFIG_PATH` → XDG → `~/.config`）、凭据读写、凭据来源解析（环境变量 → `.env` → 配置文件；`.env` 只读不注入环境变量） |
 | `errors.py` | 结构化 JSON 错误信封：所有命令的失败统一为 stderr 单行 JSON `{"error": {"type": ...}}`（type ∈ auth / not_found / graphql / http）+ 退出码 1 |
 | `login.py` | `login` 命令：验证 API key 并保存凭据 |
-| `issue.py` | `issue` 命令组：`create`（`--team`/`--title`/`--body`）、`view`（标识）、`list`（`--limit` 默认 50，filters：team/state/assignee/label/project/cycle/query/created-at/updated-at/order-by/include-archived）与 `update`（部分更新，字段同 list 的名称类取值） |
+| `issue.py` | `issue` 命令组：`create`（`--team`/`--title`/`--body`）、`view`（标识）、`list`（`--limit` 默认 50，filters：team/state/assignee/label/project/cycle/query/created-at/updated-at/order-by/include-archived）、`update`（部分更新，字段同 list 的名称类取值）与 `comment` 子组（list/add/delete） |
 | `__main__.py` | 支持 `python -m linear_cli` 执行 |
 | `__init__.py` | 导出 `app`、`main`，控制公开 API |

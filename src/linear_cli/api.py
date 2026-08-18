@@ -155,6 +155,45 @@ mutation IssueArchive($id: String!) {
 }
 """
 
+_ISSUE_COMMENTS_QUERY = """
+query IssueComments($id: String!) {
+  issue(id: $id) {
+    comments(orderBy: createdAt) {
+      nodes {
+        id
+        body
+        user {
+          id
+          name
+        }
+        createdAt
+        updatedAt
+      }
+    }
+  }
+}
+"""
+
+_CREATE_COMMENT_MUTATION = """
+mutation CommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) {
+    success
+    comment {
+      id
+      url
+    }
+  }
+}
+"""
+
+_DELETE_COMMENT_MUTATION = """
+mutation CommentDelete($id: String!) {
+  commentDelete(id: $id) {
+    success
+  }
+}
+"""
+
 
 class GraphQLAPIError(Exception):
     """Linear 响应含 GraphQL ``errors`` 字段时抛出。
@@ -601,3 +640,43 @@ def archive_issue(api_key: str, issue_id: str) -> None:
     不是 ``TES-123`` 形式的标识。供测试代码在断言通过后清理。"""
     data = _post(api_key, _ARCHIVE_ISSUE_MUTATION, {"id": issue_id})
     data["data"]["issueArchive"]["success"]
+
+
+def fetch_issue_comments(api_key: str, issue_id: str) -> list[dict] | None:
+    """按标识拉取 issue 的评论，按创建时间序。
+
+    返回节点即输出契约（id/body/user{id,name}/createdAt/updatedAt）；
+    标识不存在时返回 ``None``。
+    """
+    data = _post(api_key, _ISSUE_COMMENTS_QUERY, {"id": issue_id})
+    issue = data["data"]["issue"]
+    if issue is None:
+        return None
+    return issue["comments"]["nodes"]
+
+
+def create_comment(api_key: str, issue_id: str, body: str) -> dict | None:
+    """给 issue 添加一条评论，返回 ``{"id", "url"}``。
+
+    ``body`` 原样透传，不做任何裁剪或改写；先按标识解析 issue UUID，
+    标识不存在时返回 ``None``（写入前确定性报错）。
+    """
+    issue = fetch_issue(api_key, issue_id)
+    if issue is None:
+        return None
+    data = _post(
+        api_key,
+        _CREATE_COMMENT_MUTATION,
+        {"input": {"issueId": issue["id"], "body": body}},
+    )
+    return data["data"]["commentCreate"]["comment"]
+
+
+def delete_comment(api_key: str, comment_id: str) -> bool:
+    """按评论 UUID 删除评论，返回是否成功。
+
+    评论不存在时服务端返回 200 + GraphQL ``errors``（由 ``_post`` 抛
+    ``GraphQLAPIError``，走共享 graphql 信封）。
+    """
+    data = _post(api_key, _DELETE_COMMENT_MUTATION, {"id": comment_id})
+    return data["data"]["commentDelete"]["success"]

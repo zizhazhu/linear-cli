@@ -1,4 +1,4 @@
-"""``issue`` 命令组：create、view、list 与 update。"""
+"""``issue`` 命令组：create、view、list、update 与 comment。"""
 
 import json
 from enum import Enum
@@ -13,8 +13,11 @@ from linear_cli.api import (
     GraphQLAPIError,
     TeamNotFoundError,
     build_issue_filter,
+    create_comment,
     create_issue,
+    delete_comment,
     fetch_issue,
+    fetch_issue_comments,
     fetch_issues,
     update_issue,
 )
@@ -37,6 +40,14 @@ class IssueOrderBy(str, Enum):
 
     createdAt = "createdAt"
     updatedAt = "updatedAt"
+
+
+comment_app = typer.Typer(
+    name="comment",
+    help="操作 issue 评论。",
+    no_args_is_help=True,
+)
+issue_app.add_typer(comment_app)
 
 
 def _resolve_api_key_or_exit() -> str:
@@ -272,3 +283,80 @@ def _print_issues_table(issues: list[dict]) -> None:
             issue["updatedAt"],
         )
     Console().print(table)
+
+
+@comment_app.command("list")
+def list_comments(
+    issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
+    pretty: bool = typer.Option(
+        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
+    ),
+) -> None:
+    """列出 issue 的评论（按创建时间序）。"""
+    api_key = _resolve_api_key_or_exit()
+    try:
+        comments = fetch_issue_comments(api_key, issue_id)
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
+    else:
+        if comments is None:
+            emit_not_found_error([f"issue {issue_id!r} 不存在。"])
+        if pretty:
+            for comment in comments:
+                user = comment["user"]["name"] if comment["user"] else "未知用户"
+                typer.echo(f"{comment['createdAt']} {user}")
+                typer.echo(comment["body"])
+                typer.echo()
+        else:
+            typer.echo(json.dumps(comments, ensure_ascii=False))
+
+
+@comment_app.command("add")
+def add_comment(
+    issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
+    body: str = typer.Option(..., "--body", "-b", help="评论正文（Markdown）。"),
+    pretty: bool = typer.Option(
+        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
+    ),
+) -> None:
+    """给 issue 添加一条评论（正文逐字透传）。"""
+    api_key = _resolve_api_key_or_exit()
+    try:
+        comment = create_comment(api_key, issue_id, body)
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
+    else:
+        if comment is None:
+            emit_not_found_error([f"issue {issue_id!r} 不存在。"])
+        if pretty:
+            typer.echo(comment["url"])
+        else:
+            typer.echo(
+                json.dumps(
+                    {"id": comment["id"], "url": comment["url"]},
+                    ensure_ascii=False,
+                )
+            )
+
+
+@comment_app.command("delete")
+def delete_comment_command(
+    comment_id: str = typer.Argument(
+        ..., help="评论 UUID（从 `issue comment list` 获得）。"
+    ),
+    pretty: bool = typer.Option(
+        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
+    ),
+) -> None:
+    """按 UUID 删除一条评论。"""
+    api_key = _resolve_api_key_or_exit()
+    try:
+        deleted = delete_comment(api_key, comment_id)
+    except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
+        emit_api_error(exc)
+    else:
+        result = {"id": comment_id, "deleted": deleted}
+        if pretty:
+            typer.echo(f"deleted {comment_id}")
+        else:
+            typer.echo(json.dumps(result, ensure_ascii=False))

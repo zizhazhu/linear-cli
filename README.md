@@ -90,6 +90,23 @@ $ linear issue update TES-123 --title "新标题" --assignee me --label bug --du
 | `--project` / `--cycle` | 项目名称或 UUID / Cycle 编号、名称或 UUID |
 | `--due-date` | 截止日期（yyyy-mm-dd） |
 
+## 评论 issue
+
+`comment` 子命令组用于查看与汇报进度：
+
+```console
+$ linear issue comment add TES-123 --body "进度汇报"
+{"id": "2a2ced62-...", "url": "https://linear.app/.../issue/TES-123#comment-2a2ced62"}
+
+$ linear issue comment list TES-123
+[{"id": "...", "body": "进度汇报", "user": {"id": "...", "name": "Name"}, "createdAt": "2026-08-18T00:00:00.000Z", "updatedAt": "..."}]
+
+$ linear issue comment delete 2a2ced62-...
+{"id": "2a2ced62-...", "deleted": true}
+```
+
+`add` 的 `--body` 逐字透传（同 create 契约）；`delete` 按评论 UUID 删除（UUID 从 `comment list` 获得），用于收回发错的汇报。
+
 ## 配置
 
 配置文件路径按以下优先级解析（全平台统一）：
