@@ -11,6 +11,11 @@ query Viewer {
     name
     email
   }
+  organization {
+    id
+    name
+    urlKey
+  }
 }
 """
 
@@ -51,6 +56,47 @@ query Issue($id: String!) {
     url
     title
     description
+    branchName
+    state {
+      id
+      name
+      type
+    }
+    priority
+    priorityLabel
+    estimate
+    assignee {
+      id
+      name
+    }
+    creator {
+      id
+      name
+    }
+    team {
+      id
+      key
+      name
+    }
+    labels {
+      nodes {
+        name
+      }
+    }
+    project {
+      id
+      name
+    }
+    parent {
+      id
+    }
+    createdAt
+    updatedAt
+    archivedAt
+    completedAt
+    startedAt
+    canceledAt
+    dueDate
   }
 }
 """
@@ -103,9 +149,14 @@ def _post(api_key: str, query: str, variables: dict[str, object]) -> dict:
     return data
 
 
+def fetch_viewer_and_organization(api_key: str) -> dict[str, dict]:
+    """用 API key 拉取当前用户与组织信息，作为 login 的数据源。"""
+    return _post(api_key, _VIEWER_QUERY, {})["data"]
+
+
 def fetch_viewer(api_key: str) -> dict[str, str]:
     """用 API key 拉取当前用户信息，用于验证凭据有效性。"""
-    return _post(api_key, _VIEWER_QUERY, {})["data"]["viewer"]
+    return fetch_viewer_and_organization(api_key)["viewer"]
 
 
 def fetch_teams(api_key: str) -> list[dict[str, str]]:
