@@ -58,3 +58,21 @@ def delete_issue_label(api_key: str, label_id: str) -> None:
         headers={"Authorization": api_key},
     )
     response.raise_for_status()
+
+
+def comment_parent_id(api_key: str, comment_id: str) -> str | None:
+    """直查评论的父评论 id（测试读回验证用；CLI 的 list 输出不含 parent 字段）。"""
+    response = httpx.post(
+        "https://api.linear.app/graphql",
+        json={
+            "query": "query($id: String!) { comment(id: $id) { parent { id } } }",
+            "variables": {"id": comment_id},
+        },
+        headers={"Authorization": api_key},
+    )
+    response.raise_for_status()
+    body = response.json()
+    if body.get("errors"):
+        raise AssertionError(f"comment query failed: {body['errors']}")
+    parent = body["data"]["comment"]["parent"]
+    return parent["id"] if parent else None

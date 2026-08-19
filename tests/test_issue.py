@@ -33,8 +33,7 @@ from conftest import (
     VIEWER_RESPONSE,
     error_envelope,
 )
-from real_api import require_real_api_key
-from real_api import require_real_api_key
+from real_api import comment_parent_id, require_real_api_key
 from typer.testing import CliRunner
 
 from linear_cli import app
@@ -1616,3 +1615,103 @@ def test_comment_delete_nonexistent_real_api(config_path, monkeypatch) -> None:
     error = error_envelope(result)
     assert error["type"] == "graphql"
     assert any("Comment" in m for m in error["messages"])
+
+
+@respx.mock
+def test_comment_add_parent_maps_to_parent_id_with_issue_id(config_path) -> None:
+    """Given 已登录且目标 issue 存在
+    When issue comment add --parent <评论 UUID> --body
+    Then mutation input 为 {issueId: 解析出的 UUID, parentId: 传入 UUID, body}
+    ——GraphQL 真值：parentId 不能脱离 issueId 单独成立（实测 parentId-only
+    被拒，与 MCP 的「回复无需实体引用」描述相反）；输出契约不变
+    """
+    write_api_key_to_config(config_path, FAKE_API_KEY)
+    _route(
+        {
+            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
+            "mutation CommentCreate(": httpx.Response(
+                200, json=CREATE_COMMENT_RESPONSE
+            ),
+        }
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "issue", "comment", "add", "TES-123",
+            "--parent", "parent-comment-id",
+            "--body", "回复内容",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.output) == {
+        "id": "comment-id-1",
+        "url": "https://linear.app/acme/issue/TES-123#comment-comment-id-1",
+    }
+    assert _last_variables()["input"] == {
+        "issueId": ISSUE["id"],
+        "parentId": "parent-comment-id",
+        "body": "回复内容",
+    }
+
+
+def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
+    """Given 真实 API key、一条新建 issue 与其下的一条父评论
+    When comment add --parent <父评论 UUID>，随后直查 GraphQL 读回
+    Then 回复挂到父评论之下（parent.id 读回一致）、父评论的 parent 为 null
+    （顶层）；CLI comment list 平铺可见两条；断言通过后删子、删父、归档
+    issue（失败保留现场）
+    """
+    api_key = require_real_api_key(config_path, monkeypatch)
+    run_id = uuid.uuid4().hex[:8]
+    create_result = runner.invoke(
+        app,
+        [
+            "issue", "create",
+            "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x",
+        ],
+    )
+    assert create_result.exit_code == 0, create_result.stderr
+    created = json.loads(create_result.output)
+    identifier = created["identifier"]
+
+    try:
+        parent_result = runner.invoke(
+            app, ["issue", "comment", "add", identifier, "--body", "父评论"]
+        )
+        assert parent_result.exit_code == 0, parent_result.stderr
+        parent = json.loads(parent_result.output)
+
+        reply_result = runner.invoke(
+            app,
+            [
+                "issue", "comment", "add", identifier,
+                "--parent", parent["id"],
+                "--body", "子回复",
+            ],
+        )
+        assert reply_result.exit_code == 0, reply_result.stderr
+        reply = json.loads(reply_result.output)
+
+        assert comment_parent_id(api_key, reply["id"]) == parent["id"]
+        assert comment_parent_id(api_key, parent["id"]) is None
+
+        list_result = runner.invoke(app, ["issue", "comment", "list", identifier])
+        assert list_result.exit_code == 0, list_result.stderr
+        comments = json.loads(list_result.output)
+        assert {c["id"] for c in comments} == {parent["id"], reply["id"]}
+        reply_body = next(c["body"] for c in comments if c["id"] == reply["id"])
+        assert reply_body == "子回复"
+    except Exception:
+        # 断言失败保留现场，不清理
+        raise
+
+    for comment_id in (reply["id"], parent["id"]):
+        delete_result = runner.invoke(
+            app, ["issue", "comment", "delete", comment_id]
+        )
+        assert delete_result.exit_code == 0, delete_result.stderr
+    view_result = runner.invoke(app, ["issue", "view", identifier])
+    assert view_result.exit_code == 0, view_result.stderr
+    archive_issue(api_key, json.loads(view_result.output)["id"])
