@@ -302,14 +302,19 @@ def list_comments(
 def add_comment(
     issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
     body: str = typer.Option(..., "--body", "-b", help="评论正文（Markdown）。"),
+    parent: str = typer.Option(
+        None,
+        "--parent",
+        help="父评论 UUID（从 `issue comment list` 获得）；传入则为回复。",
+    ),
     pretty: bool = typer.Option(
         False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
     ),
 ) -> None:
-    """给 issue 添加一条评论（正文逐字透传）。"""
+    """给 issue 添加一条评论（正文逐字透传），可回复已有评论。"""
     api_key = require_api_key()
     try:
-        comment = create_comment(api_key, issue_id, body)
+        comment = create_comment(api_key, issue_id, body, parent_id=parent)
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:

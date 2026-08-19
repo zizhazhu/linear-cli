@@ -166,6 +166,9 @@ $ linear issue comment delete <comment-id>
 - `list` 输出评论数组：`id, body, user{id,name}, createdAt, updatedAt`。
 - `add` 的 `--body` 逐字透传（同 create 契约）；默认输出
   `{"id": "...", "url": "..."}`。
+- `add` 可选 `--parent <评论 UUID>` 回复已有评论（list 平铺含回复，输出
+  字段集不变）。注意与 MCP `save_comment` 的差异：GraphQL 真值要求回复
+  同时携带 issueId 与 parentId，parentId 单独不成立。
 - `delete` 按评论 UUID 删除（UUID 从 `comment list` 获得）；输出
   `{"id": "...", "deleted": true}`。覆盖 Agent 发错汇报需收回的场景。
 - 这是 Agent 汇报进度的出口，优先级高于查询层。

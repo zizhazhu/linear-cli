@@ -681,20 +681,23 @@ def fetch_issue_comments(api_key: str, issue_id: str) -> list[dict] | None:
     return issue["comments"]["nodes"]
 
 
-def create_comment(api_key: str, issue_id: str, body: str) -> dict | None:
-    """给 issue 添加一条评论，返回 ``{"id", "url"}``。
+def create_comment(
+    api_key: str, issue_id: str, body: str, parent_id: str | None = None
+) -> dict | None:
+    """给 issue 添加一条评论（可作对 ``parent_id`` 的回复），返回 ``{"id", "url"}``。
 
     ``body`` 原样透传，不做任何裁剪或改写；先按标识解析 issue UUID，
-    标识不存在时返回 ``None``（写入前确定性报错）。
+    标识不存在时返回 ``None``（写入前确定性报错）。回复需同时携带
+    ``issueId`` 与 ``parentId``——API 实测 parentId 脱离 issueId 不成立
+    （与 MCP 的「回复无需实体引用」描述相反）。
     """
     issue = fetch_issue(api_key, issue_id)
     if issue is None:
         return None
-    data = _post(
-        api_key,
-        _CREATE_COMMENT_MUTATION,
-        {"input": {"issueId": issue["id"], "body": body}},
-    )
+    input_: dict[str, str] = {"issueId": issue["id"], "body": body}
+    if parent_id is not None:
+        input_["parentId"] = parent_id
+    data = _post(api_key, _CREATE_COMMENT_MUTATION, {"input": input_})
     return data["data"]["commentCreate"]["comment"]
 
 

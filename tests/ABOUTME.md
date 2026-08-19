@@ -28,10 +28,10 @@
 | 条目 | 说明 |
 |------|------|
 | `conftest.py` | 共享 fixture：fake API key、样例 GraphQL 响应（viewer/teams/issue/错误）、凭据环境隔离（`LINEAR_CONFIG_PATH` → `tmp_path`、清除 `LINEAR_API_KEY`、chdir 到临时目录使 `.env` 查找落空） |
-| `real_api.py` | 真实 API 契约测试的共享设施：自行读取 `.env`（`dotenv_values`，不污染环境变量），`require_real_api_key` 把同一把 key 同时钉进环境变量与配置文件，缺失时 skip；`delete_issue_label` 为标签 round-trip 测试的清理手段（直连 GraphQL，不进生产模块） |
+| `real_api.py` | 真实 API 契约测试的共享设施：自行读取 `.env`（`dotenv_values`，不污染环境变量），`require_real_api_key` 把同一把 key 同时钉进环境变量与配置文件，缺失时 skip；`delete_issue_label` 为标签 round-trip 测试的清理手段，`comment_parent_id` 为评论回复的读回验证手段（均直连 GraphQL，不进生产模块） |
 | `test_app.py` | CLI 入口冒烟测试：`--help` 与无参数时的行为 |
 | `test_api.py` | API 客户端测试：成功返回 viewer、HTTP 错误抛 `HTTPStatusError`、网络错误原样传播 |
 | `test_config.py` | 配置读写纯函数测试：`read_api_key_from_config` 缺文件/缺字段返回 `None`、写入读取回环；`resolve_api_key` 凭据来源优先级（环境变量 → `.env` → 配置文件，全落空抛 `MissingApiKeyError`；`.env` 是显式数据源，解析不注入环境变量） |
 | `test_login.py` | `linear login` 命令测试：有效/无效 key、JSON 默认输出与 `--pretty`、prompt 入口、覆盖已有凭据、配置路径三级优先（`LINEAR_CONFIG_PATH` → XDG → `~/.config` 回落） |
-| `test_issue.py` | `issue create/view/list/update/comment` 测试：必填参数、未登录、未知 Team、GraphQL/HTTP 错误输出、list 的 filter/order-by/include-archived 请求构造、update 的部分更新与名称→UUID 客户端解析、comment list/add/delete 契约（离线）；env 凭据优先于配置文件（离线）；7 条真实 API 测试（create→view round-trip、view 不存在标识、list --limit 1 字段契约、list filters 服务端读回一致、update 全字段 round-trip、comment add→list→delete round-trip、comment delete 不存在 UUID 错误结构）凭据由 `real_api.py` 统一注入，缺失时 skip |
+| `test_issue.py` | `issue create/view/list/update/comment` 测试：必填参数、未登录、未知 Team、GraphQL/HTTP 错误输出、list 的 filter/order-by/include-archived 请求构造、update 的部分更新与名称→UUID 客户端解析、comment list/add/delete/回复（--parent）契约（离线）；env 凭据优先于配置文件（离线）；8 条真实 API 测试（create→view round-trip、view 不存在标识、list --limit 1 字段契约、list filters 服务端读回一致、update 全字段 round-trip、comment add→list→delete round-trip、comment delete 不存在 UUID 错误结构、comment 回复挂载读回）凭据由 `real_api.py` 统一注入，缺失时 skip |
 | `test_query.py` | 查询层命令测试：六条 list 的输出字段契约、`--team` 客户端解析与 not_found 短路、label create 的 input 构造（离线）；7 条真实 API 测试（各命令一条字段契约 + label create→list 读回 round-trip，标签清理用 `real_api.delete_issue_label`） |

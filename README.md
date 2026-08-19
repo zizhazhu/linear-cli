@@ -105,7 +105,7 @@ $ linear issue comment delete 2a2ced62-...
 {"id": "2a2ced62-...", "deleted": true}
 ```
 
-`add` 的 `--body` 逐字透传（同 create 契约）；`delete` 按评论 UUID 删除（UUID 从 `comment list` 获得），用于收回发错的汇报。
+`add` 的 `--body` 逐字透传（同 create 契约）；`--parent` 传父评论 UUID 即为回复（UUID 从 `comment list` 获得；注意回复仍需指向 issue，二者同时生效）；`delete` 按评论 UUID 删除，用于收回发错的汇报。
 
 ## 查询层
 
