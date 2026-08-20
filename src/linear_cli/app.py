@@ -1,5 +1,6 @@
 import typer
 
+from linear_cli.guide import guide
 from linear_cli.issue import issue_app
 from linear_cli.login import login
 from linear_cli.query import (
@@ -24,6 +25,7 @@ def callback() -> None:
 
 
 app.command()(login)
+app.command()(guide)
 app.add_typer(issue_app)
 app.add_typer(team_app)
 app.add_typer(user_app)
