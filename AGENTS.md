@@ -20,6 +20,7 @@ Linear CLI：自用的 Linear 命令行工具。官方未提供 CLI，第三方�
 |------|------|
 | `README.md` | 项目门面（人类向）：项目定位与使用说明 |
 | `docs/` | 技术文档（设计决策、技术方案等） |
+| `skills/` | 随仓库发布的 Agent Skills（`npx skills` 可发现并安装） |
 | `src/` | 源码（`linear_cli` 包，uv 项目 + src layout） |
 | `tests/` | 单元测试（pytest） |
 
