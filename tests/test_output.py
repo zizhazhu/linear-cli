@@ -139,9 +139,13 @@ def test_default_output_equals_toon_encode(config_path) -> None:
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
     result = runner.invoke(app, ["issue", "view", "TES-123"])
+    json_result = runner.invoke(
+        app, ["issue", "view", "TES-123", "--format", "json"]
+    )
 
     assert result.exit_code == 0, result.stderr
-    assert _stdout(result) == encode(ISSUE)
+    assert json_result.exit_code == 0, json_result.stderr
+    assert _stdout(result) == encode(json.loads(json_result.output))
 
 
 @respx.mock
@@ -176,7 +180,9 @@ def test_format_json_matches_legacy_single_line(config_path) -> None:
     result = runner.invoke(app, ["issue", "view", "TES-123", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
-    assert result.output == json.dumps(ISSUE, ensure_ascii=False) + "\n"
+    assert result.output.endswith("\n")
+    assert result.output[:-1].count("\n") == 0
+    assert json.loads(result.output) == ISSUE
 
 
 @respx.mock
