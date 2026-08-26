@@ -44,20 +44,16 @@ click 的零依赖优势在这个薄 CLI 中不构成决定性因素。
 
 直接 POST 到 `https://api.linear.app/graphql`。
 
-### 终端渲染：rich
+### 输出格式：toon-format / PyYAML
 
-负责展示层，不影响业务逻辑。核心用途：
+成功路径的 stdout 由统一 formatter 编码：
 
-- **表格**：`rich.table.Table` 渲染 issue 列表（ID、标题、状态、优先级），
-  服务"个人任务面板"场景。
-- **颜色与样式**：按状态/优先级上色，一眼扫出重点。
-- **Markdown 渲染**：Linear issue 描述是 Markdown，`rich.markdown.Markdown`
-  可在终端渲染标题、列表、代码块。
-- **Spinner**：网络请求时显示 loading 动画。
-- **异常美化**：traceback 带语法高亮，调试省事。
+- **默认 TOON**：官方 port `toon-format`（锁定 0.9.0b1）的 `encode` 输出。
+- **`--format json`**：`json.dumps(..., ensure_ascii=False)` 单行，兼容旧默认。
+- **`--format yaml`**：PyYAML；多行字符串用 block scalar。
 
-**与 Agent 模式的配合**：默认输出纯 JSON，`--pretty` 才走 rich 渲染；rich
-自动检测 TTY，管道/重定向时自动去掉颜色控制符，不污染 Agent 读到的文本。
+失败路径不接入 formatter：`errors.py` 仍写 stderr 单行 JSON。typer 自带的
+rich 仅服务 `--help` 美化，生产代码不再直接使用。
 
 ### 认证
 
@@ -77,6 +73,7 @@ platformdirs 一类的库。
 
 | 包 | 用途 |
 |------|------|
-| `typer` | CLI 框架（自带 rich 依赖） |
+| `typer` | CLI 框架（自带 rich 依赖，仅 `--help` 使用） |
 | `httpx` | HTTP 客户端，发送 GraphQL 请求 |
-| `rich` | 终端富文本渲染（typer 间接依赖，显式声明便于直接使用） |
+| `toon-format` | 默认 stdout 编码器（锁定 0.9.0b1） |
+| `pyyaml` | `--format yaml` |

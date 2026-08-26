@@ -9,9 +9,10 @@
 
 CLI 的主要调用方是 Agent（经 shell 调用），其次才是人：
 
-- **默认输出 JSON** 到 stdout；`--pretty` 才输出人类可读格式（rich 渲染）。
-- **错误是数据结构**：失败时 stderr 输出单行 JSON 错误信封，退出码非 0。
-  Agent 读 `type` 字段分支，不做文本匹配。
+- **默认输出 TOON** 到 stdout；`--format {toon,json,yaml}` 选择格式。
+  `--format json` 为单行 JSON 兼容锚点。
+- **错误是数据结构**：失败时 stderr 输出单行 JSON 错误信封，退出码非 0，
+  不受 `--format` 影响。Agent 读 `type` 字段分支，不做文本匹配。
 - `--help` 文本按 tool description 标准写：每个 flag 说清取值来源与格式。
 
 ### 错误信封
@@ -56,8 +57,8 @@ CLI 的主要调用方是 Agent（经 shell 调用），其次才是人：
 
 - 认证：Personal API key，三级优先级（env → `.env` → 配置文件），见
   tech-stack.md，本文不重复。
-- 所有命令共享输出层：默认 JSON；`--pretty`；错误信封。
-- `--json` flag 不复存在（JSON 是默认行为）。
+- 所有命令共享输出层：默认 TOON；`--format {toon,json,yaml}`；错误信封。
+- `--pretty` 不复存在（TOON 已面向人类可读）。
 
 ## 命令清单
 
@@ -72,9 +73,8 @@ $ linear login --api-key lin_api_xxx
 ```
 
 - 验证 key（`viewer` 查询）→ 写配置文件，流程不变。
-- 默认输出 JSON：`viewer{id, name, email}` + `workspace{id, name, url}`
+- 默认输出 TOON：`viewer{id, name, email}` + `workspace{id, name, url}`
   两个顶层字段——workspace 元信息并入 login，不单设命令。
-- `--pretty` 输出 `已登录：Name <email>`。
 
 #### issue view
 
@@ -109,8 +109,8 @@ MCP 参照：`save_issue`（create 路径）
 $ linear issue create --team TES --title "标题" --body "正文"
 ```
 
-- 默认输出 JSON：`{"identifier": "...", "url": "..."}`；`--pretty` 输出
-  `TES-123 https://...` 单行。
+- 默认输出 TOON：`identifier` 与 `url`；`--format json` 为
+  `{"identifier": "...", "url": "..."}`。
 - `--body` 逐字透传，不做任何裁剪/改写/规范化（现有契约，不变）。
 - **team key 在客户端解析**为 UUID 后再发 mutation（先查 teams）：写入前
   即可确定性报 `not_found`。这是与 MCP 模糊解析的**有意差异**，不对齐。
@@ -135,7 +135,7 @@ filters（MCP 入参拍平为 flag）：
   面板场景下 archived 是噪音。
 - 列表项字段为 view 字段集的子集：
   `identifier, title, state{name,type}, priority, assignee{name}, updatedAt, url`。
-- 输出为 JSON 数组；分页 cursor 先不暴露，超出 `--limit` 时截断即可。
+- 输出为数组；分页 cursor 先不暴露，超出 `--limit` 时截断即可。
 
 #### issue update（新增）
 
@@ -151,7 +151,7 @@ flags：`--title, --body, --state, --priority, --assignee, --label,
 - 只传要改的字段；未传的字段不动（部分更新语义）。
 - `--state` / `--assignee` / `--label` 等的取值经查询层命令在客户端解析为
   UUID（与 create 的 team 解析同一原则：写入前确定性报 `not_found`）。
-- 默认输出更新后的 issue JSON（字段集同 view）。
+- 默认输出更新后的 issue（字段集同 view）。
 
 #### issue comment list / add / delete（新增）
 
@@ -243,7 +243,7 @@ attachment 即 PR 链接），Linear 侧只做状态跟踪，不做审查。
 按契约面推进，每域遵循「MCP 探查 → 红灯测试 commit → 绿灯实现 commit」：
 
 1. ~~错误信封契约~~（红灯已落：commit `6584983`）
-2. `issue view`：字段扩展 + JSON-first + `--pretty`
+2. `issue view`：字段扩展 + TOON 默认 + `--format`
 3. `issue create` 与 `login`：输出翻转（小，合并推进）
 4. `issue list`
 5. `issue update`（依赖查询层的取值解析，可视需要提前做 `team/status/

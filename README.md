@@ -2,7 +2,7 @@
 
 自用的 Linear 命令行工具，由于官方没有提供 CLI，第三方接口也可能随时改变，所以自己制作一个薄 CLI 用于本地操作 Linear。
 
-所有命令默认在 stdout 输出单行 JSON（供 Agent 与脚本消费）；加 `--pretty` 才输出人类可读格式。
+所有命令默认在 stdout 输出 TOON（可读且可机器解析）；`--format json` 输出与旧默认一致的单行 JSON，`--format yaml` 输出 YAML（多行正文用 block scalar）。失败时 stderr 仍为单行 JSON 错误信封。
 
 ## 登录
 
@@ -10,7 +10,14 @@
 
 ```console
 $ linear login --api-key lin_api_xxx
-{"viewer": {"id": "...", "name": "Name", "email": "name@example.com"}, "workspace": {"id": "...", "name": "Workspace", "url": "https://linear.app/workspace"}}
+viewer:
+  id: ...
+  name: Name
+  email: name@example.com
+workspace:
+  id: ...
+  name: Workspace
+  url: "https://linear.app/workspace"
 ```
 
 ## 创建 issue
@@ -19,10 +26,11 @@ $ linear login --api-key lin_api_xxx
 
 ```console
 $ linear issue create --team TES --title "标题" --body "正文"
-{"identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123"}
+identifier: TES-123
+url: "https://linear.app/workspace/issue/TES-123"
 
-$ linear issue create --team TES --title "标题" --body "正文" --pretty
-TES-123 https://linear.app/workspace/issue/TES-123
+$ linear issue create --team TES --title "标题" --body "正文" --format json
+{"identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123"}
 ```
 
 `--body` 原样写入 Linear description，不做任何裁剪、改写或规范化。
@@ -33,23 +41,22 @@ TES-123 https://linear.app/workspace/issue/TES-123
 
 ```console
 $ linear issue view TES-123
-{"id": "258773fc-...", "identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123", "title": "标题", "description": "正文", "branchName": "name/tes-123-标题", "state": {"id": "...", "name": "In Progress", "type": "started"}, "priority": 2, "priorityLabel": "High", "estimate": null, "assignee": {"id": "...", "name": "Name"}, "createdBy": {"id": "...", "name": "Name"}, "team": {"id": "...", "key": "TES", "name": "Test"}, "labels": [], "project": null, "parentId": null, "createdAt": "2026-08-18T00:00:00.000Z", "updatedAt": "2026-08-18T00:00:00.000Z", "archivedAt": null, "completedAt": null, "startedAt": null, "canceledAt": null, "dueDate": null}
-
-$ linear issue view TES-123 --pretty
-TES-123 标题
-正文
+id: 258773fc-...
+identifier: TES-123
+title: 标题
+description: 正文
+url: "https://linear.app/workspace/issue/TES-123"
+...
 ```
 
 ## 列出 issue
 
-`list` 拉取工作区 issue，默认 50 条，输出 JSON 数组（每项为 view 字段集的子集）：
+`list` 拉取工作区 issue，默认 50 条，输出数组（每项为 view 字段集的子集）：
 
 ```console
-$ linear issue list --limit 10
+$ linear issue list --limit 10 --format json
 [{"identifier": "TES-123", "title": "标题", "url": "https://linear.app/...", "state": {"name": "In Progress", "type": "started"}, "priority": 2, "assignee": {"name": "Name"}, "updatedAt": "2026-08-18T00:00:00.000Z"}, ...]
 ```
-
-`--pretty` 以表格渲染。
 
 支持的过滤 flag（可组合，AND 语义）：
 
@@ -74,7 +81,7 @@ $ linear issue list --query "关键词" --order-by createdAt --limit 10
 `update` 只传要改的字段，未传的字段不动；名称类取值（状态/负责人/标签/项目/Cycle）在写入前解析为 UUID，解析不到则确定性报错（`not_found`）。输出更新后的 issue（字段集同 view）：
 
 ```console
-$ linear issue update TES-123 --state "In Progress" --priority 2
+$ linear issue update TES-123 --state "In Progress" --priority 2 --format json
 {"id": "...", "identifier": "TES-123", ..., "state": {"name": "In Progress", ...}, ...}
 
 $ linear issue update TES-123 --title "新标题" --assignee me --label bug --due-date 2026-12-31
@@ -96,12 +103,13 @@ $ linear issue update TES-123 --title "新标题" --assignee me --label bug --du
 
 ```console
 $ linear issue comment add TES-123 --body "进度汇报"
-{"id": "2a2ced62-...", "url": "https://linear.app/.../issue/TES-123#comment-2a2ced62"}
+id: 2a2ced62-...
+url: "https://linear.app/.../issue/TES-123#comment-2a2ced62"
 
-$ linear issue comment list TES-123
+$ linear issue comment list TES-123 --format json
 [{"id": "...", "body": "进度汇报", "user": {"id": "...", "name": "Name"}, "createdAt": "2026-08-18T00:00:00.000Z", "updatedAt": "..."}]
 
-$ linear issue comment delete 2a2ced62-...
+$ linear issue comment delete 2a2ced62-... --format json
 {"id": "2a2ced62-...", "deleted": true}
 ```
 
@@ -112,7 +120,7 @@ $ linear issue comment delete 2a2ced62-...
 核心层命令取值来源（team 缩写、状态名、负责人、标签、项目、Cycle 等）各一条 list：
 
 ```console
-$ linear team list
+$ linear team list --format json
 [{"id": "...", "key": "TES", "name": "Test"}]
 
 $ linear user list

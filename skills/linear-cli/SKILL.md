@@ -5,8 +5,9 @@ description: Manage Linear from the terminal via the local `linear` CLI — list
 
 # linear-cli
 
-Use the `linear` CLI for all Linear operations. It emits single-line JSON on
-stdout and structured JSON errors on stderr — built for agent consumption.
+Use the `linear` CLI for all Linear operations. It emits TOON on stdout by
+default (`--format json|yaml` to opt in) and structured JSON errors on
+stderr — built for agent consumption.
 
 ## First step
 
