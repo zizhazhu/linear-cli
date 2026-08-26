@@ -49,16 +49,11 @@ def _shape_issue(node: dict) -> dict:
     labels 拍平为名称数组，creator 映射为 createdBy，parent 映射为 parentId
     （可空字段原样为 null），其余字段按 GraphQL 命名原样输出。
     """
-    shaped = {}
-    for key, value in node.items():
-        if key == "labels":
-            shaped["labels"] = [label["name"] for label in value["nodes"]]
-        elif key == "creator":
-            shaped["createdBy"] = value
-        elif key == "parent":
-            shaped["parentId"] = value["id"] if value else None
-        else:
-            shaped[key] = value
+    shaped = dict(node)
+    shaped["labels"] = [label["name"] for label in node["labels"]["nodes"]]
+    shaped["createdBy"] = node["creator"]
+    shaped["parentId"] = node["parent"]["id"] if node["parent"] else None
+    del shaped["creator"], shaped["parent"]
     return shaped
 
 
