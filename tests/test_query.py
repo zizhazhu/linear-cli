@@ -63,7 +63,7 @@ def test_team_list_outputs_teams(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Teams": httpx.Response(200, json=TEAMS_RESPONSE)})
 
-    result = runner.invoke(app, ["team", "list"])
+    result = runner.invoke(app, ["team", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == [{"id": "team-id-tes", "key": "TES", "name": "Test"}]
@@ -82,21 +82,6 @@ def test_team_list_not_logged_in_errors_without_api(config_path) -> None:
     assert error["type"] == "auth"
     assert "linear login" in "; ".join(error["messages"])
     assert not respx.calls
-
-
-@respx.mock
-def test_team_list_pretty_smoke(config_path) -> None:
-    """Given 已登录
-    When 执行 team list --pretty
-    Then 正常退出且输出非空（渲染内容不做字符串断言，见 tests/ABOUTME.md）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Teams": httpx.Response(200, json=TEAMS_RESPONSE)})
-
-    result = runner.invoke(app, ["team", "list", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
 
 
 @respx.mock
@@ -129,7 +114,7 @@ def test_user_list_outputs_users(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Users": httpx.Response(200, json=USERS_RESPONSE)})
 
-    result = runner.invoke(app, ["user", "list"])
+    result = runner.invoke(app, ["user", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == USERS_RESPONSE["data"]["users"]["nodes"]
@@ -152,7 +137,7 @@ def test_status_list_with_team_outputs_team_states(config_path) -> None:
         }
     )
 
-    result = runner.invoke(app, ["status", "list", "--team", "TES"])
+    result = runner.invoke(app, ["status", "list", "--team", "TES", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == TEAM_STATES_RESPONSE["data"]["team"]["states"]["nodes"]
@@ -180,7 +165,7 @@ def test_status_list_without_team_concatenates_all_teams(config_path) -> None:
         }
     )
 
-    result = runner.invoke(app, ["status", "list"])
+    result = runner.invoke(app, ["status", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == TEAM_STATES_RESPONSE["data"]["team"]["states"]["nodes"]
@@ -220,7 +205,7 @@ def test_label_list_outputs_all_labels_without_team_field(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query IssueLabels": httpx.Response(200, json=ISSUE_LABELS_RESPONSE)})
 
-    result = runner.invoke(app, ["label", "list"])
+    result = runner.invoke(app, ["label", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == [
@@ -246,7 +231,7 @@ def test_label_list_team_includes_workspace_and_team_labels(config_path) -> None
         }
     )
 
-    result = runner.invoke(app, ["label", "list", "--team", "TES"])
+    result = runner.invoke(app, ["label", "list", "--team", "TES", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == [
@@ -300,7 +285,18 @@ def test_label_create_sends_resolved_team_and_fields(config_path) -> None:
 
     result = runner.invoke(
         app,
-        ["label", "create", "--team", "TES", "--name", "cli-new", "--color", "#123456"],
+        [
+            "label",
+            "create",
+            "--team",
+            "TES",
+            "--name",
+            "cli-new",
+            "--color",
+            "#123456",
+            "--format",
+            "json",
+        ],
     )
 
     assert result.exit_code == 0, result.stderr
@@ -389,7 +385,7 @@ def test_project_list_outputs_projects(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Projects": httpx.Response(200, json=PROJECTS_RESPONSE)})
 
-    result = runner.invoke(app, ["project", "list"])
+    result = runner.invoke(app, ["project", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == [
@@ -420,7 +416,7 @@ def test_cycle_list_with_team_outputs_cycles(config_path) -> None:
         }
     )
 
-    result = runner.invoke(app, ["cycle", "list", "--team", "TES"])
+    result = runner.invoke(app, ["cycle", "list", "--team", "TES", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == CYCLES_RESPONSE["data"]["cycles"]["nodes"]
@@ -448,7 +444,7 @@ def test_cycle_list_without_team_concatenates_all_teams(config_path) -> None:
         }
     )
 
-    result = runner.invoke(app, ["cycle", "list"])
+    result = runner.invoke(app, ["cycle", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == CYCLES_RESPONSE["data"]["cycles"]["nodes"]
@@ -468,7 +464,7 @@ def test_team_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["team", "list"])
+    result = runner.invoke(app, ["team", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     teams = json.loads(result.output)
@@ -487,7 +483,7 @@ def test_user_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["user", "list"])
+    result = runner.invoke(app, ["user", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     users = json.loads(result.output)
@@ -508,7 +504,7 @@ def test_status_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["status", "list", "--team", "TES"])
+    result = runner.invoke(app, ["status", "list", "--team", "TES", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     states = json.loads(result.output)
@@ -528,7 +524,7 @@ def test_label_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["label", "list"])
+    result = runner.invoke(app, ["label", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     labels = json.loads(result.output)
@@ -547,7 +543,7 @@ def test_project_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["project", "list"])
+    result = runner.invoke(app, ["project", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     projects = json.loads(result.output)
@@ -566,7 +562,7 @@ def test_cycle_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["cycle", "list", "--team", "TES"])
+    result = runner.invoke(app, ["cycle", "list", "--team", "TES", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     cycles = json.loads(result.output)
@@ -590,14 +586,25 @@ def test_label_create_roundtrip_real_api(config_path, monkeypatch) -> None:
     try:
         create_result = runner.invoke(
             app,
-            ["label", "create", "--team", "TES", "--name", name, "--color", "#4EA7FC"],
+            [
+                "label",
+                "create",
+                "--team",
+                "TES",
+                "--name",
+                name,
+                "--color",
+                "#4EA7FC",
+                "--format",
+                "json",
+            ],
         )
         assert create_result.exit_code == 0, create_result.stderr
         label = json.loads(create_result.output)
         assert label == {"id": label["id"], "name": name}
         assert len(label["id"]) == 36
 
-        list_result = runner.invoke(app, ["label", "list"])
+        list_result = runner.invoke(app, ["label", "list", "--format", "json"])
         assert list_result.exit_code == 0, list_result.stderr
         labels = json.loads(list_result.output)
         match = next((l for l in labels if l["name"] == name), None)

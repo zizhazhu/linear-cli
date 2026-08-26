@@ -36,32 +36,20 @@ def test_login_with_valid_api_key_saves_config(config_path: Path) -> None:
 
 
 @respx.mock
-def test_login_defaults_to_json_output(config_path: Path) -> None:
+def test_login_format_json_outputs_viewer_and_workspace(config_path: Path) -> None:
     """Given 合法 API key
-    When 执行 login（不带任何输出 flag）
+    When 执行 login --format json
     Then stdout 为单行 JSON：viewer 与 workspace 两个顶层字段，workspace.url
     由 organization.urlKey 推导
     """
     respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
 
-    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY])
+    result = runner.invoke(
+        app, ["login", "--api-key", FAKE_API_KEY, "--format", "json"]
+    )
 
     assert result.exit_code == 0
     assert json.loads(result.output) == LOGIN_OUTPUT
-
-
-@respx.mock
-def test_login_pretty_prints_human_readable(config_path: Path) -> None:
-    """Given 合法 API key
-    When 执行 login --pretty
-    Then 输出「已登录：Name <email>」人类可读格式
-    """
-    respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
-
-    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY, "--pretty"])
-
-    assert result.exit_code == 0
-    assert "已登录：Test User <test@example.com>" in result.output
 
 
 @respx.mock

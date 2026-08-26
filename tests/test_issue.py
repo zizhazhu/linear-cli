@@ -162,9 +162,9 @@ def test_create_unknown_team_errors_without_issuecreate(config_path) -> None:
 
 
 @respx.mock
-def test_create_defaults_to_json_output(config_path) -> None:
+def test_create_format_json_outputs_identifier_and_url(config_path) -> None:
     """Given 已登录且 team TES 存在
-    When 执行 issue create（不带任何输出 flag）
+    When 执行 issue create --format json
     Then stdout 为单行 JSON：{"identifier": ..., "url": ...}
     """
     write_api_key_to_config(config_path, FAKE_API_KEY)
@@ -176,7 +176,19 @@ def test_create_defaults_to_json_output(config_path) -> None:
     )
 
     result = runner.invoke(
-        app, ["issue", "create", "--team", "TES", "--title", "T", "--body", "B"]
+        app,
+        [
+            "issue",
+            "create",
+            "--team",
+            "TES",
+            "--title",
+            "T",
+            "--body",
+            "B",
+            "--format",
+            "json",
+        ],
     )
 
     assert result.exit_code == 0, result.stderr
@@ -184,29 +196,6 @@ def test_create_defaults_to_json_output(config_path) -> None:
         "identifier": "TES-123",
         "url": ISSUE["url"],
     }
-
-
-@respx.mock
-def test_create_pretty_outputs_identifier_and_url(config_path) -> None:
-    """Given 已登录且 team TES 存在
-    When 执行 issue create --pretty
-    Then 输出单行「标识 URL」人类可读格式
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {
-            "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
-            "mutation IssueCreate": httpx.Response(200, json=CREATE_ISSUE_RESPONSE),
-        }
-    )
-
-    result = runner.invoke(
-        app,
-        ["issue", "create", "--team", "TES", "--title", "T", "--body", "B", "--pretty"],
-    )
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip() == f"TES-123 {ISSUE['url']}"
 
 
 @respx.mock
@@ -263,9 +252,9 @@ def test_create_passes_body_verbatim_to_api(config_path) -> None:
 
 
 @respx.mock
-def test_view_defaults_to_full_json_output(config_path) -> None:
+def test_view_format_json_outputs_full_issue(config_path) -> None:
     """Given 已登录且目标 issue 存在
-    When 执行 issue view（不带任何输出 flag）
+    When 执行 issue view --format json
     Then stdout 为单行完整 issue JSON：字段 GraphQL 命名，labels 拍平为名称
     数组，creator 映射为 createdBy，parent 映射为 parentId，可空字段原样
     为 null（不省略）
@@ -273,26 +262,10 @@ def test_view_defaults_to_full_json_output(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
 
-    result = runner.invoke(app, ["issue", "view", "TES-123"])
+    result = runner.invoke(app, ["issue", "view", "TES-123", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == ISSUE
-
-
-@respx.mock
-def test_view_pretty_prints_human_readable(config_path) -> None:
-    """Given 已登录且目标 issue 存在
-    When 执行 issue view --pretty
-    Then 输出人类可读格式：首行「标识 标题」，随后为正文原文
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
-
-    result = runner.invoke(app, ["issue", "view", "TES-123", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert "TES-123 Test issue" in result.output
-    assert "Body line 1\nBody line 2" in result.output
 
 
 @respx.mock
@@ -311,9 +284,9 @@ def test_view_json_flag_removed_errors(config_path) -> None:
 
 
 @respx.mock
-def test_list_defaults_to_json_array(config_path) -> None:
+def test_list_format_json_outputs_array(config_path) -> None:
     """Given 已登录且工作区有两条 issue（其二无 assignee）
-    When 执行 issue list（不带任何 flag）
+    When 执行 issue list --format json
     Then stdout 为 JSON 数组，逐项为 view 字段集的子集（identifier/title/
     url/state{name,type}/priority/assignee{name}/updatedAt），assignee 为
     null 的项原样保留 null
@@ -321,7 +294,7 @@ def test_list_defaults_to_json_array(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
 
-    result = runner.invoke(app, ["issue", "list"])
+    result = runner.invoke(app, ["issue", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == ISSUE_LIST
@@ -349,22 +322,6 @@ def test_list_limit_flag_overrides_default(config_path) -> None:
 
 
 @respx.mock
-def test_list_pretty_smoke(config_path) -> None:
-    """Given 已登录且工作区有 issue
-    When 执行 issue list --pretty
-    Then 正常退出且输出非空（rich 表格内容不做字符串断言，见
-    tests/ABOUTME.md 渲染层约定）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
-
-    result = runner.invoke(app, ["issue", "list", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
-
-
-@respx.mock
 def test_list_not_logged_in_errors_without_api(config_path) -> None:
     """Given 配置文件不存在（未登录）
     When 执行 issue list
@@ -388,7 +345,7 @@ def test_list_empty_result_outputs_empty_array(config_path) -> None:
     write_api_key_to_config(config_path, FAKE_API_KEY)
     _route({"query Issues": httpx.Response(200, json=EMPTY_ISSUES_RESPONSE)})
 
-    result = runner.invoke(app, ["issue", "list"])
+    result = runner.invoke(app, ["issue", "list", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == []
@@ -727,7 +684,17 @@ def test_update_title_body_sends_only_those_fields(config_path) -> None:
 
     result = runner.invoke(
         app,
-        ["issue", "update", "TES-123", "--title", "New title", "--body", "New body"],
+        [
+            "issue",
+            "update",
+            "TES-123",
+            "--title",
+            "New title",
+            "--body",
+            "New body",
+            "--format",
+            "json",
+        ],
     )
 
     assert result.exit_code == 0, result.stderr
@@ -1013,29 +980,6 @@ def test_update_project_and_cycle_resolve(config_path) -> None:
 
 
 @respx.mock
-def test_update_pretty_prints_like_view(config_path) -> None:
-    """Given 已登录且更新成功
-    When issue update --pretty
-    Then 输出与 view --pretty 同构：首行「标识 标题」，随后为正文原文
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {
-            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
-            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
-        }
-    )
-
-    result = runner.invoke(
-        app, ["issue", "update", "TES-123", "--title", "T", "--pretty"]
-    )
-
-    assert result.exit_code == 0, result.stderr
-    assert "TES-123 Test issue" in result.output
-    assert "Body line 1\nBody line 2" in result.output
-
-
-@respx.mock
 def test_update_graphql_error_uses_shared_envelope(config_path) -> None:
     """Given mutation 响应含 GraphQL errors
     When issue update
@@ -1148,7 +1092,18 @@ def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
 
     create_result = runner.invoke(
         app,
-        ["issue", "create", "--team", "TES", "--title", title, "--body", body],
+        [
+            "issue",
+            "create",
+            "--team",
+            "TES",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--format",
+            "json",
+        ],
     )
     assert create_result.exit_code == 0, create_result.stderr
     created = json.loads(create_result.output)
@@ -1159,7 +1114,9 @@ def test_create_view_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert created["url"].startswith("https://linear.app/")
         assert identifier in created["url"]
 
-        view_result = runner.invoke(app, ["issue", "view", identifier])
+        view_result = runner.invoke(
+            app, ["issue", "view", identifier, "--format", "json"]
+        )
         assert view_result.exit_code == 0, view_result.stderr
         read_back = json.loads(view_result.output)
         issue_uuid = read_back["id"]
@@ -1208,7 +1165,7 @@ def test_list_real_api(config_path, monkeypatch) -> None:
     """
     require_real_api_key(config_path, monkeypatch)
 
-    result = runner.invoke(app, ["issue", "list", "--limit", "1"])
+    result = runner.invoke(app, ["issue", "list", "--limit", "1", "--format", "json"])
 
     assert result.exit_code == 0, result.stderr
     items = json.loads(result.output)
@@ -1235,7 +1192,19 @@ def test_list_filters_roundtrip_real_api(config_path, monkeypatch) -> None:
     title = f"cli-roundtrip-{run_id}"
 
     create_result = runner.invoke(
-        app, ["issue", "create", "--team", "TES", "--title", title, "--body", "x"]
+        app,
+        [
+            "issue",
+            "create",
+            "--team",
+            "TES",
+            "--title",
+            title,
+            "--body",
+            "x",
+            "--format",
+            "json",
+        ],
     )
     assert create_result.exit_code == 0, create_result.stderr
     created = json.loads(create_result.output)
@@ -1251,6 +1220,7 @@ def test_list_filters_roundtrip_real_api(config_path, monkeypatch) -> None:
                 "--created-at=-P1D",
                 "--updated-at=-P1D",
                 "--order-by", "updatedAt",
+                "--format", "json",
             ],
         )
         assert result.exit_code == 0, result.stderr
@@ -1262,7 +1232,9 @@ def test_list_filters_roundtrip_real_api(config_path, monkeypatch) -> None:
         # 断言失败保留现场，不归档
         raise
 
-    view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+    view_result = runner.invoke(
+        app, ["issue", "view", created["identifier"], "--format", "json"]
+    )
     assert view_result.exit_code == 0, view_result.stderr
     archive_issue(api_key, json.loads(view_result.output)["id"])
 
@@ -1279,7 +1251,18 @@ def test_update_roundtrip_real_api(config_path, monkeypatch) -> None:
     run_id = uuid.uuid4().hex[:8]
     create_result = runner.invoke(
         app,
-        ["issue", "create", "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x"],
+        [
+            "issue",
+            "create",
+            "--team",
+            "TES",
+            "--title",
+            f"cli-roundtrip-{run_id}",
+            "--body",
+            "x",
+            "--format",
+            "json",
+        ],
     )
     assert create_result.exit_code == 0, create_result.stderr
     created = json.loads(create_result.output)
@@ -1299,6 +1282,7 @@ def test_update_roundtrip_real_api(config_path, monkeypatch) -> None:
                 "--label", "bug",
                 "--due-date", "2026-12-31",
                 "--assignee", "me",
+                "--format", "json",
             ],
         )
         assert update_result.exit_code == 0, update_result.stderr
@@ -1312,7 +1296,9 @@ def test_update_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert updated["dueDate"] == "2026-12-31"
         assert updated["assignee"]["name"]
 
-        view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+        view_result = runner.invoke(
+            app, ["issue", "view", created["identifier"], "--format", "json"]
+        )
         assert view_result.exit_code == 0, view_result.stderr
         read_back = json.loads(view_result.output)
         assert read_back["title"] == new_title
@@ -1359,7 +1345,9 @@ def test_comment_list_outputs_comment_array(config_path) -> None:
         {"query IssueComments(": httpx.Response(200, json=ISSUE_COMMENTS_RESPONSE)}
     )
 
-    result = runner.invoke(app, ["issue", "comment", "list", "TES-123"])
+    result = runner.invoke(
+        app, ["issue", "comment", "list", "TES-123", "--format", "json"]
+    )
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == [COMMENT_NODE]
@@ -1380,7 +1368,9 @@ def test_comment_list_empty_outputs_empty_array(config_path) -> None:
         }
     )
 
-    result = runner.invoke(app, ["issue", "comment", "list", "TES-123"])
+    result = runner.invoke(
+        app, ["issue", "comment", "list", "TES-123", "--format", "json"]
+    )
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == []
@@ -1407,23 +1397,6 @@ def test_comment_list_unknown_issue_not_found(config_path) -> None:
 
 
 @respx.mock
-def test_comment_list_pretty_smoke(config_path) -> None:
-    """Given 已登录且 issue 有评论
-    When 执行 issue comment list --pretty
-    Then 正常退出且输出非空（渲染内容不做字符串断言，见 tests/ABOUTME.md）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {"query IssueComments(": httpx.Response(200, json=ISSUE_COMMENTS_RESPONSE)}
-    )
-
-    result = runner.invoke(app, ["issue", "comment", "list", "TES-123", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
-
-
-@respx.mock
 def test_comment_add_outputs_id_and_url(config_path) -> None:
     """Given 已登录且目标 issue 存在
     When 执行 issue comment add TES-123 --body
@@ -1441,7 +1414,17 @@ def test_comment_add_outputs_id_and_url(config_path) -> None:
     )
 
     result = runner.invoke(
-        app, ["issue", "comment", "add", "TES-123", "--body", "进度汇报"]
+        app,
+        [
+            "issue",
+            "comment",
+            "add",
+            "TES-123",
+            "--body",
+            "进度汇报",
+            "--format",
+            "json",
+        ],
     )
 
     assert result.exit_code == 0, result.stderr
@@ -1512,7 +1495,9 @@ def test_comment_delete_outputs_id_and_deleted(config_path) -> None:
         {"mutation CommentDelete(": httpx.Response(200, json=DELETE_COMMENT_RESPONSE)}
     )
 
-    result = runner.invoke(app, ["issue", "comment", "delete", "comment-id-1"])
+    result = runner.invoke(
+        app, ["issue", "comment", "delete", "comment-id-1", "--format", "json"]
+    )
 
     assert result.exit_code == 0, result.stderr
     assert json.loads(result.output) == {"id": "comment-id-1", "deleted": True}
@@ -1549,7 +1534,18 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
     run_id = uuid.uuid4().hex[:8]
     create_result = runner.invoke(
         app,
-        ["issue", "create", "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x"],
+        [
+            "issue",
+            "create",
+            "--team",
+            "TES",
+            "--title",
+            f"cli-roundtrip-{run_id}",
+            "--body",
+            "x",
+            "--format",
+            "json",
+        ],
     )
     assert create_result.exit_code == 0, create_result.stderr
     created = json.loads(create_result.output)
@@ -1557,7 +1553,17 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
 
     try:
         add_result = runner.invoke(
-            app, ["issue", "comment", "add", created["identifier"], "--body", body]
+            app,
+            [
+                "issue",
+                "comment",
+                "add",
+                created["identifier"],
+                "--body",
+                body,
+                "--format",
+                "json",
+            ],
         )
         assert add_result.exit_code == 0, add_result.stderr
         comment = json.loads(add_result.output)
@@ -1565,7 +1571,8 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert created["identifier"] in comment["url"]
 
         list_result = runner.invoke(
-            app, ["issue", "comment", "list", created["identifier"]]
+            app,
+            ["issue", "comment", "list", created["identifier"], "--format", "json"],
         )
         assert list_result.exit_code == 0, list_result.stderr
         comments = json.loads(list_result.output)
@@ -1576,7 +1583,8 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert comments[0]["createdAt"].endswith("Z")
 
         delete_result = runner.invoke(
-            app, ["issue", "comment", "delete", comment["id"]]
+            app,
+            ["issue", "comment", "delete", comment["id"], "--format", "json"],
         )
         assert delete_result.exit_code == 0, delete_result.stderr
         assert json.loads(delete_result.output) == {
@@ -1585,7 +1593,8 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
         }
 
         list_result = runner.invoke(
-            app, ["issue", "comment", "list", created["identifier"]]
+            app,
+            ["issue", "comment", "list", created["identifier"], "--format", "json"],
         )
         assert list_result.exit_code == 0, list_result.stderr
         assert json.loads(list_result.output) == []
@@ -1593,7 +1602,9 @@ def test_comment_roundtrip_real_api(config_path, monkeypatch) -> None:
         # 断言失败保留现场，不归档
         raise
 
-    view_result = runner.invoke(app, ["issue", "view", created["identifier"]])
+    view_result = runner.invoke(
+        app, ["issue", "view", created["identifier"], "--format", "json"]
+    )
     assert view_result.exit_code == 0, view_result.stderr
     archive_issue(api_key, json.loads(view_result.output)["id"])
 
@@ -1641,6 +1652,7 @@ def test_comment_add_parent_maps_to_parent_id_with_issue_id(config_path) -> None
             "issue", "comment", "add", "TES-123",
             "--parent", "parent-comment-id",
             "--body", "回复内容",
+            "--format", "json",
         ],
     )
 
@@ -1670,6 +1682,7 @@ def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
         [
             "issue", "create",
             "--team", "TES", "--title", f"cli-roundtrip-{run_id}", "--body", "x",
+            "--format", "json",
         ],
     )
     assert create_result.exit_code == 0, create_result.stderr
@@ -1678,7 +1691,17 @@ def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
 
     try:
         parent_result = runner.invoke(
-            app, ["issue", "comment", "add", identifier, "--body", "父评论"]
+            app,
+            [
+                "issue",
+                "comment",
+                "add",
+                identifier,
+                "--body",
+                "父评论",
+                "--format",
+                "json",
+            ],
         )
         assert parent_result.exit_code == 0, parent_result.stderr
         parent = json.loads(parent_result.output)
@@ -1689,6 +1712,7 @@ def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
                 "issue", "comment", "add", identifier,
                 "--parent", parent["id"],
                 "--body", "子回复",
+                "--format", "json",
             ],
         )
         assert reply_result.exit_code == 0, reply_result.stderr
@@ -1697,7 +1721,9 @@ def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
         assert comment_parent_id(api_key, reply["id"]) == parent["id"]
         assert comment_parent_id(api_key, parent["id"]) is None
 
-        list_result = runner.invoke(app, ["issue", "comment", "list", identifier])
+        list_result = runner.invoke(
+            app, ["issue", "comment", "list", identifier, "--format", "json"]
+        )
         assert list_result.exit_code == 0, list_result.stderr
         comments = json.loads(list_result.output)
         assert {c["id"] for c in comments} == {parent["id"], reply["id"]}
@@ -1709,9 +1735,9 @@ def test_comment_reply_roundtrip_real_api(config_path, monkeypatch) -> None:
 
     for comment_id in (reply["id"], parent["id"]):
         delete_result = runner.invoke(
-            app, ["issue", "comment", "delete", comment_id]
+            app, ["issue", "comment", "delete", comment_id, "--format", "json"]
         )
         assert delete_result.exit_code == 0, delete_result.stderr
-    view_result = runner.invoke(app, ["issue", "view", identifier])
+    view_result = runner.invoke(app, ["issue", "view", identifier, "--format", "json"])
     assert view_result.exit_code == 0, view_result.stderr
     archive_issue(api_key, json.loads(view_result.output)["id"])
