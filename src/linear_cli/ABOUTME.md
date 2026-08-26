@@ -18,6 +18,7 @@
 | `app.py` | typer app 定义与入口函数 `main`；在此挂载各子命令 |
 | `api.py` | Linear GraphQL 客户端（query/mutation + httpx），含 issue 的 create/view/list（含 filter 组装）/update（含名称→UUID 客户端解析）/comment/archive 操作，及 teams/states/users/labels/projects/cycles 查询与 label create |
 | `config.py` | 配置路径解析（`LINEAR_CONFIG_PATH` → XDG → `~/.config`）、凭据读写、凭据来源解析（环境变量 → `.env` → 配置文件；`.env` 只读不注入环境变量） |
+| `output.py` | 成功路径 stdout 格式化：默认 TOON（`toon-format` encode），`--format json` 为单行 JSON 兼容锚点，`--format yaml` 对多行字符串用 block scalar；错误路径不接入 |
 | `errors.py` | 结构化 JSON 错误信封：所有命令的失败统一为 stderr 单行 JSON `{"error": {"type": ...}}`（type ∈ auth / not_found / graphql / http）+ 退出码 1；`require_api_key` 为各命令共用的凭据解析入口 |
 | `login.py` | `login` 命令：验证 API key 并保存凭据 |
 | `guide.py` | `guide` 命令：面向 Agent 的英文使用指南（静态文本，不触网、不需要凭据） |

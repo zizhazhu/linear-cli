@@ -105,7 +105,6 @@ dependencies = [
     { name = "httpx" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "rich" },
     { name = "toon-format" },
     { name = "typer" },
 ]
@@ -121,7 +120,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "rich", specifier = ">=15.0.0" },
     { name = "toon-format", specifier = "==0.9.0b1" },
     { name = "typer", specifier = ">=0.27.0" },
 ]

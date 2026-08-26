@@ -6,8 +6,9 @@ GUIDE = """\
 linear-cli — a thin CLI over the Linear GraphQL API, built for agents and scripts.
 
 I/O contract
-- Success: single-line JSON on stdout. Add --pretty for human-readable output.
-- Failure: single-line JSON on stderr, exit code 1:
+- Success: TOON on stdout (default). Choose with --format {toon,json,yaml}.
+  --format json is the compatibility anchor: single-line JSON.
+- Failure: single-line JSON on stderr, exit code 1 (unaffected by --format):
   {"error": {"type": ..., ...}} where type is one of
     auth       missing or invalid credentials
     not_found  unresolvable identifier or name (deterministic resolution)
@@ -42,7 +43,7 @@ Core workflow
 
 Tips
 - Full flag reference: `linear <command> --help` (e.g. `linear issue list --help`).
-- Outputs are stable single-line JSON — safe to pipe to jq.
+- Default TOON is still machine-parseable; use --format json for jq.
 - To attach a label that does not exist yet:
   `linear label create --team TES --name <name>` first.
 """

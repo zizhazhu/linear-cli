@@ -1,12 +1,9 @@
 """``issue`` 命令组：create、view、list、update 与 comment。"""
 
-import json
 from enum import Enum
 
 import httpx
 import typer
-from rich.console import Console
-from rich.table import Table
 
 from linear_cli.api import (
     EntityNotFoundError,
@@ -22,6 +19,7 @@ from linear_cli.api import (
     update_issue,
 )
 from linear_cli.errors import emit_api_error, emit_not_found_error, require_api_key
+from linear_cli.output import OutputFormat, emit, format_option
 
 issue_app = typer.Typer(
     name="issue",
@@ -51,11 +49,16 @@ def _shape_issue(node: dict) -> dict:
     labels 拍平为名称数组，creator 映射为 createdBy，parent 映射为 parentId
     （可空字段原样为 null），其余字段按 GraphQL 命名原样输出。
     """
-    shaped = dict(node)
-    shaped["labels"] = [label["name"] for label in node["labels"]["nodes"]]
-    shaped["createdBy"] = node["creator"]
-    shaped["parentId"] = node["parent"]["id"] if node["parent"] else None
-    del shaped["creator"], shaped["parent"]
+    shaped = {}
+    for key, value in node.items():
+        if key == "labels":
+            shaped["labels"] = [label["name"] for label in value["nodes"]]
+        elif key == "creator":
+            shaped["createdBy"] = value
+        elif key == "parent":
+            shaped["parentId"] = value["id"] if value else None
+        else:
+            shaped[key] = value
     return shaped
 
 
@@ -66,9 +69,7 @@ def create(
     ),
     title: str = typer.Option(..., "--title", help="Issue 标题。"),
     body: str = typer.Option(..., "--body", "-b", help="Issue 正文（Markdown）。"),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """创建一条 issue 并返回标识与网页 URL。"""
     api_key = require_api_key()
@@ -79,23 +80,13 @@ def create(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            typer.echo(f"{issue['identifier']} {issue['url']}")
-        else:
-            typer.echo(
-                json.dumps(
-                    {"identifier": issue["identifier"], "url": issue["url"]},
-                    ensure_ascii=False,
-                )
-            )
+        emit({"identifier": issue["identifier"], "url": issue["url"]}, fmt)
 
 
 @issue_app.command("view")
 def view(
     issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """按标识读回一条 issue（无需 Team 参数）。"""
     api_key = require_api_key()
@@ -106,12 +97,7 @@ def view(
     else:
         if issue is None:
             emit_not_found_error([f"issue {issue_id!r} 不存在。"])
-        shaped = _shape_issue(issue)
-        if pretty:
-            typer.echo(f"{shaped['identifier']} {shaped['title']}")
-            typer.echo(shaped["description"])
-        else:
-            typer.echo(json.dumps(shaped, ensure_ascii=False))
+        emit(_shape_issue(issue), fmt)
 
 
 @issue_app.command("list")
@@ -150,9 +136,7 @@ def list_issues(
     include_archived: bool = typer.Option(
         False, "--include-archived", help="包含已归档的 issue（默认不含）。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """按过滤条件列出工作区的 issue。"""
     api_key = require_api_key()
@@ -178,10 +162,7 @@ def list_issues(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_issues_table(issues)
-        else:
-            typer.echo(json.dumps(issues, ensure_ascii=False))
+        emit(issues, fmt)
 
 
 @issue_app.command("update")
@@ -214,9 +195,7 @@ def update(
     due_date: str = typer.Option(
         None, "--due-date", help="截止日期（yyyy-mm-dd）。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """更新 issue 的指定字段（未传的字段不动），输出更新后的 issue。"""
     fields = (title, body, state, priority, assignee, label, project, cycle, due_date)
@@ -247,37 +226,13 @@ def update(
     else:
         if updated is None:
             emit_not_found_error([f"issue {issue_id!r} 不存在。"])
-        shaped = _shape_issue(updated)
-        if pretty:
-            typer.echo(f"{shaped['identifier']} {shaped['title']}")
-            typer.echo(shaped['description'])
-        else:
-            typer.echo(json.dumps(shaped, ensure_ascii=False))
-
-
-def _print_issues_table(issues: list[dict]) -> None:
-    """以 rich 表格渲染 issue 列表（--pretty 专用）。"""
-    table = Table(show_header=True, header_style="bold")
-    for column in ("标识", "标题", "状态", "优先级", "负责人", "更新时间"):
-        table.add_column(column)
-    for issue in issues:
-        table.add_row(
-            issue["identifier"],
-            issue["title"],
-            issue["state"]["name"],
-            str(issue["priority"]),
-            issue["assignee"]["name"] if issue["assignee"] else "-",
-            issue["updatedAt"],
-        )
-    Console().print(table)
+        emit(_shape_issue(updated), fmt)
 
 
 @comment_app.command("list")
 def list_comments(
     issue_id: str = typer.Argument(..., help="Issue 标识，如 TES-123。"),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出 issue 的评论（按创建时间序）。"""
     api_key = require_api_key()
@@ -288,14 +243,7 @@ def list_comments(
     else:
         if comments is None:
             emit_not_found_error([f"issue {issue_id!r} 不存在。"])
-        if pretty:
-            for comment in comments:
-                user = comment["user"]["name"] if comment["user"] else "未知用户"
-                typer.echo(f"{comment['createdAt']} {user}")
-                typer.echo(comment["body"])
-                typer.echo()
-        else:
-            typer.echo(json.dumps(comments, ensure_ascii=False))
+        emit(comments, fmt)
 
 
 @comment_app.command("add")
@@ -307,9 +255,7 @@ def add_comment(
         "--parent",
         help="父评论 UUID（从 `issue comment list` 获得）；传入则为回复。",
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """给 issue 添加一条评论（正文逐字透传），可回复已有评论。"""
     api_key = require_api_key()
@@ -320,15 +266,7 @@ def add_comment(
     else:
         if comment is None:
             emit_not_found_error([f"issue {issue_id!r} 不存在。"])
-        if pretty:
-            typer.echo(comment["url"])
-        else:
-            typer.echo(
-                json.dumps(
-                    {"id": comment["id"], "url": comment["url"]},
-                    ensure_ascii=False,
-                )
-            )
+        emit({"id": comment["id"], "url": comment["url"]}, fmt)
 
 
 @comment_app.command("delete")
@@ -336,9 +274,7 @@ def delete_comment_command(
     comment_id: str = typer.Argument(
         ..., help="评论 UUID（从 `issue comment list` 获得）。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """按 UUID 删除一条评论。"""
     api_key = require_api_key()
@@ -347,8 +283,4 @@ def delete_comment_command(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        result = {"id": comment_id, "deleted": deleted}
-        if pretty:
-            typer.echo(f"deleted {comment_id}")
-        else:
-            typer.echo(json.dumps(result, ensure_ascii=False))
+        emit({"id": comment_id, "deleted": deleted}, fmt)

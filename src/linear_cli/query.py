@@ -4,12 +4,8 @@
 ``label create`` 供 ``issue update --label`` 贴尚不存在的标签。
 """
 
-import json
-
 import httpx
 import typer
-from rich.console import Console
-from rich.table import Table
 
 from linear_cli.api import (
     GraphQLAPIError,
@@ -24,6 +20,7 @@ from linear_cli.api import (
     resolve_team_id,
 )
 from linear_cli.errors import emit_api_error, emit_not_found_error, require_api_key
+from linear_cli.output import OutputFormat, emit, format_option
 
 team_app = typer.Typer(name="team", help="查询 Team。", no_args_is_help=True)
 user_app = typer.Typer(name="user", help="查询用户。", no_args_is_help=True)
@@ -33,21 +30,9 @@ project_app = typer.Typer(name="project", help="查询项目。", no_args_is_hel
 cycle_app = typer.Typer(name="cycle", help="查询 Cycle。", no_args_is_help=True)
 
 
-def _print_table(columns: tuple[str, ...], rows: list[tuple]) -> None:
-    """以 rich 表格渲染查询层列表（--pretty 专用）。"""
-    table = Table(show_header=True, header_style="bold")
-    for column in columns:
-        table.add_column(column)
-    for row in rows:
-        table.add_row(*(str(cell) if cell is not None else "-" for cell in row))
-    Console().print(table)
-
-
 @team_app.command("list")
 def team_list(
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出工作区的 Team（id/key/name）。"""
     api_key = require_api_key()
@@ -56,19 +41,12 @@ def team_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_table(
-                ("id", "key", "name"), [(t["id"], t["key"], t["name"]) for t in teams]
-            )
-        else:
-            typer.echo(json.dumps(teams, ensure_ascii=False))
+        emit(teams, fmt)
 
 
 @user_app.command("list")
 def user_list(
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出工作区用户（id/name/displayName/email/active）。"""
     api_key = require_api_key()
@@ -77,16 +55,7 @@ def user_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_table(
-                ("id", "name", "displayName", "email", "active"),
-                [
-                    (u["id"], u["name"], u["displayName"], u["email"], u["active"])
-                    for u in users
-                ],
-            )
-        else:
-            typer.echo(json.dumps(users, ensure_ascii=False))
+        emit(users, fmt)
 
 
 def _fetch_states(api_key: str, team: str | None) -> list[dict]:
@@ -105,9 +74,7 @@ def status_list(
     team: str = typer.Option(
         None, "--team", help="Team 缩写或 UUID；缺省列出全部 team 的状态。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出工作流状态（id/name/type/position，按 team 拼接）。"""
     api_key = require_api_key()
@@ -118,13 +85,7 @@ def status_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_table(
-                ("id", "name", "type", "position"),
-                [(s["id"], s["name"], s["type"], s["position"]) for s in states],
-            )
-        else:
-            typer.echo(json.dumps(states, ensure_ascii=False))
+        emit(states, fmt)
 
 
 @label_app.command("list")
@@ -132,9 +93,7 @@ def label_list(
     team: str = typer.Option(
         None, "--team", help="Team 缩写或 UUID；输出该 team 可用的标签全集。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出 issue 标签（id/name/color）。
 
@@ -156,16 +115,10 @@ def label_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        output = [
-            {"id": l["id"], "name": l["name"], "color": l["color"]} for l in labels
-        ]
-        if pretty:
-            _print_table(
-                ("id", "name", "color"),
-                [(l["id"], l["name"], l["color"]) for l in output],
-            )
-        else:
-            typer.echo(json.dumps(output, ensure_ascii=False))
+        emit(
+            [{"id": l["id"], "name": l["name"], "color": l["color"]} for l in labels],
+            fmt,
+        )
 
 
 @label_app.command("create")
@@ -173,9 +126,7 @@ def label_create(
     team: str = typer.Option(..., "--team", help="Team 缩写或 UUID。"),
     name: str = typer.Option(..., "--name", help="标签名称。"),
     color: str = typer.Option(None, "--color", help="颜色（如 #EB5757）。"),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """创建一个 issue 标签，返回 id 与名称。"""
     api_key = require_api_key()
@@ -186,17 +137,12 @@ def label_create(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            typer.echo(f"{label['name']} {label['id']}")
-        else:
-            typer.echo(json.dumps(label, ensure_ascii=False))
+        emit(label, fmt)
 
 
 @project_app.command("list")
 def project_list(
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出工作区项目（id/name/state/url）。"""
     api_key = require_api_key()
@@ -205,13 +151,7 @@ def project_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_table(
-                ("id", "name", "state", "url"),
-                [(p["id"], p["name"], p["state"], p["url"]) for p in projects],
-            )
-        else:
-            typer.echo(json.dumps(projects, ensure_ascii=False))
+        emit(projects, fmt)
 
 
 def _fetch_cycles(api_key: str, team: str | None) -> list[dict]:
@@ -230,9 +170,7 @@ def cycle_list(
     team: str = typer.Option(
         None, "--team", help="Team 缩写或 UUID；缺省列出全部 team 的 Cycle。"
     ),
-    pretty: bool = typer.Option(
-        False, "--pretty", help="以人类可读格式输出，而非默认 JSON。"
-    ),
+    fmt: OutputFormat = format_option(),
 ) -> None:
     """列出 Cycle（id/number/name/startsAt/endsAt，按 team 拼接）。"""
     api_key = require_api_key()
@@ -243,13 +181,4 @@ def cycle_list(
     except (GraphQLAPIError, httpx.HTTPStatusError) as exc:
         emit_api_error(exc)
     else:
-        if pretty:
-            _print_table(
-                ("id", "number", "name", "startsAt", "endsAt"),
-                [
-                    (c["id"], c["number"], c["name"], c["startsAt"], c["endsAt"])
-                    for c in cycles
-                ],
-            )
-        else:
-            typer.echo(json.dumps(cycles, ensure_ascii=False))
+        emit(cycles, fmt)
