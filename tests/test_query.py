@@ -85,21 +85,6 @@ def test_team_list_not_logged_in_errors_without_api(config_path) -> None:
 
 
 @respx.mock
-def test_team_list_pretty_smoke(config_path) -> None:
-    """Given 已登录
-    When 执行 team list --pretty
-    Then 正常退出且输出非空（渲染内容不做字符串断言，见 tests/ABOUTME.md）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Teams": httpx.Response(200, json=TEAMS_RESPONSE)})
-
-    result = runner.invoke(app, ["team", "list", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
-
-
-@respx.mock
 def test_query_commands_share_graphql_error_envelope(config_path) -> None:
     """Given 查询层任一命令（team list）收到含 GraphQL errors 的响应
     When 执行该命令

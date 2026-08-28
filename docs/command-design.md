@@ -9,9 +9,13 @@
 
 CLI 的主要调用方是 Agent（经 shell 调用），其次才是人：
 
-- **默认输出 JSON** 到 stdout；`--pretty` 才输出人类可读格式（rich 渲染）。
-- **错误是数据结构**：失败时 stderr 输出单行 JSON 错误信封，退出码非 0。
-  Agent 读 `type` 字段分支，不做文本匹配。
+- **默认输出 JSON** 到 stdout；`-o yaml` 输出同一份数据的 YAML 视图。人类
+  可读性由 YAML 承担，不做表格：表格塞不进 Markdown 正文，且每条命令都要
+  维护一份平行渲染。
+- **执行层错误是数据结构**：auth / not_found / graphql / http 在 stderr 输出
+  单行 JSON 错误信封，退出码 1。Agent 读 `type` 字段分支，不做文本匹配。
+  参数用法错误不在其列：由 typer 出纯文本 usage + 退出码 2，因此先分退出码，
+  再决定要不要解析 stderr。
 - `--help` 文本按 tool description 标准写：每个 flag 说清取值来源与格式。
 
 ### 错误信封
@@ -56,8 +60,14 @@ CLI 的主要调用方是 Agent（经 shell 调用），其次才是人：
 
 - 认证：Personal API key，三级优先级（env → `.env` → 配置文件），见
   tech-stack.md，本文不重复。
-- 所有命令共享输出层：默认 JSON；`--pretty`；错误信封。
-- `--json` flag 不复存在（JSON 是默认行为）。
+- 所有产出数据的命令共享同一条成功输出管线：归一化层（API 响应 → 只含
+  JSON 原生类型的数据）→ 输出层（按 `-o/--output` 渲染 stdout）。命令层只
+  交数据，不拼字符串。`guide` 输出静态文本，是唯一例外。
+- `-o/--output` 取值 `json`（默认，单行）或 `yaml`（同一份数据的多行视图，
+  字段完全一致）。非法取值走解析层参数错误（usage 文本 + 退出码 2）。
+- 错误分层：执行层失败（auth/not_found/graphql/http）走错误信封 + 退出码 1；
+  参数用法错误留给 typer + 退出码 2，不进信封。
+- `--json` flag 不复存在（JSON 是默认行为）；`--pretty` 亦已移除。
 
 ## 命令清单
 
@@ -74,7 +84,6 @@ $ linear login --api-key lin_api_xxx
 - 验证 key（`viewer` 查询）→ 写配置文件，流程不变。
 - 默认输出 JSON：`viewer{id, name, email}` + `workspace{id, name, url}`
   两个顶层字段——workspace 元信息并入 login，不单设命令。
-- `--pretty` 输出 `已登录：Name <email>`。
 
 #### issue view
 
@@ -109,8 +118,7 @@ MCP 参照：`save_issue`（create 路径）
 $ linear issue create --team TES --title "标题" --body "正文"
 ```
 
-- 默认输出 JSON：`{"identifier": "...", "url": "..."}`；`--pretty` 输出
-  `TES-123 https://...` 单行。
+- 默认输出 JSON：`{"identifier": "...", "url": "..."}`。
 - `--body` 逐字透传，不做任何裁剪/改写/规范化（现有契约，不变）。
 - **team key 在客户端解析**为 UUID 后再发 mutation（先查 teams）：写入前
   即可确定性报 `not_found`。这是与 MCP 模糊解析的**有意差异**，不对齐。
@@ -243,7 +251,7 @@ attachment 即 PR 链接），Linear 侧只做状态跟踪，不做审查。
 按契约面推进，每域遵循「MCP 探查 → 红灯测试 commit → 绿灯实现 commit」：
 
 1. ~~错误信封契约~~（红灯已落：commit `6584983`）
-2. `issue view`：字段扩展 + JSON-first + `--pretty`
+2. `issue view`：字段扩展 + JSON-first
 3. `issue create` 与 `login`：输出翻转（小，合并推进）
 4. `issue list`
 5. `issue update`（依赖查询层的取值解析，可视需要提前做 `team/status/

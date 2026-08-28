@@ -12,16 +12,19 @@ runner = CliRunner()
 def test_guide_exits_zero_and_describes_io_contract() -> None:
     """Given 已安装的 linear CLI
     When agent 运行 `linear guide`
-    Then 退出码为 0，且输出说明 I/O 契约：stdout 默认单行 JSON、--pretty 为
-    人类可读、失败时 stderr 输出单行 JSON 错误信封并以退出码 1 终止
+    Then 退出码为 0，且输出说明 I/O 契约：stdout 默认单行 JSON、`-o yaml`
+    为等价的 YAML 视图；执行层失败在 stderr 输出单行 JSON 错误信封并以
+    退出码 1 终止，参数用法错误不进信封、退出码 2
     """
     result = runner.invoke(app, ["guide"])
 
     assert result.exit_code == 0
-    assert "--pretty" in result.output
+    assert "-o yaml" in result.output
     assert '{"error"' in result.output
     assert "auth" in result.output
     assert "not_found" in result.output
+    assert "exit code 1" in result.output
+    assert "exit code 2" in result.output
 
 
 @respx.mock
