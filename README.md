@@ -2,7 +2,7 @@
 
 自用的 Linear 命令行工具，由于官方没有提供 CLI，第三方接口也可能随时改变，所以自己制作一个薄 CLI 用于本地操作 Linear。
 
-所有命令默认在 stdout 输出单行 JSON（供 Agent 与脚本消费）；加 `--pretty` 才输出人类可读格式。
+所有产出数据的命令默认在 stdout 输出单行 JSON（供 Agent 与脚本消费）；加 `-o yaml` 输出同一份数据的 YAML 视图（多行，供人阅读）。`-o/--output` 只接受 `json`（默认）与 `yaml`。
 
 ## 登录
 
@@ -20,9 +20,6 @@ $ linear login --api-key lin_api_xxx
 ```console
 $ linear issue create --team TES --title "标题" --body "正文"
 {"identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123"}
-
-$ linear issue create --team TES --title "标题" --body "正文" --pretty
-TES-123 https://linear.app/workspace/issue/TES-123
 ```
 
 `--body` 原样写入 Linear description，不做任何裁剪、改写或规范化。
@@ -35,10 +32,18 @@ TES-123 https://linear.app/workspace/issue/TES-123
 $ linear issue view TES-123
 {"id": "258773fc-...", "identifier": "TES-123", "url": "https://linear.app/workspace/issue/TES-123", "title": "标题", "description": "正文", "branchName": "name/tes-123-标题", "state": {"id": "...", "name": "In Progress", "type": "started"}, "priority": 2, "priorityLabel": "High", "estimate": null, "assignee": {"id": "...", "name": "Name"}, "createdBy": {"id": "...", "name": "Name"}, "team": {"id": "...", "key": "TES", "name": "Test"}, "labels": [], "project": null, "parentId": null, "createdAt": "2026-08-18T00:00:00.000Z", "updatedAt": "2026-08-18T00:00:00.000Z", "archivedAt": null, "completedAt": null, "startedAt": null, "canceledAt": null, "dueDate": null}
 
-$ linear issue view TES-123 --pretty
-TES-123 标题
-正文
+$ linear issue view TES-123 -o yaml
+id: 258773fc-...
+identifier: TES-123
+title: 标题
+description: |-
+  正文第一行
+  正文第二行
+url: https://linear.app/workspace/issue/TES-123
+...
 ```
+
+`-o yaml` 与默认 JSON 是同一份数据的两个视图，字段完全一致；多行正文以 YAML 块标量呈现，原文逐行可读。
 
 ## 列出 issue
 
@@ -48,8 +53,6 @@ TES-123 标题
 $ linear issue list --limit 10
 [{"identifier": "TES-123", "title": "标题", "url": "https://linear.app/...", "state": {"name": "In Progress", "type": "started"}, "priority": 2, "assignee": {"name": "Name"}, "updatedAt": "2026-08-18T00:00:00.000Z"}, ...]
 ```
-
-`--pretty` 以表格渲染。
 
 支持的过滤 flag（可组合，AND 语义）：
 

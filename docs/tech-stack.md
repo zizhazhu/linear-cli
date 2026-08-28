@@ -44,20 +44,23 @@ click 的零依赖优势在这个薄 CLI 中不构成决定性因素。
 
 直接 POST 到 `https://api.linear.app/graphql`。
 
-### 终端渲染：rich
+### 输出渲染：标准库 json + PyYAML
 
-负责展示层，不影响业务逻辑。核心用途：
+成功输出只有两个视图，都由同一份归一化数据渲染（见 command-design.md
+「全局契约」）：
 
-- **表格**：`rich.table.Table` 渲染 issue 列表（ID、标题、状态、优先级），
-  服务"个人任务面板"场景。
-- **颜色与样式**：按状态/优先级上色，一眼扫出重点。
-- **Markdown 渲染**：Linear issue 描述是 Markdown，`rich.markdown.Markdown`
-  可在终端渲染标题、列表、代码块。
-- **Spinner**：网络请求时显示 loading 动画。
-- **异常美化**：traceback 带语法高亮，调试省事。
+- **JSON**（默认）：标准库 `json`，单行、不转义非 ASCII，供 Agent 与脚本
+  逐行消费、直接喂 jq。
+- **YAML**（`-o yaml`）：PyYAML，保持键序，多行文本用块标量——Linear 的
+  issue 正文与评论是多行 Markdown，块标量能原样保留空行与缩进，这正是人类
+  读输出时最在意的部分。
 
-**与 Agent 模式的配合**：默认输出纯 JSON，`--pretty` 才走 rich 渲染；rich
-自动检测 TTY，管道/重定向时自动去掉颜色控制符，不污染 Agent 读到的文本。
+不做终端富文本渲染（表格、上色、Markdown 渲染）：表格塞不进 Markdown 正文，
+且每条命令都要维护一份与 JSON 平行的渲染路径，两者迟早对不上字段。人类可读
+性交给 YAML 视图，字段与 JSON 天然一致。真需要表格式界面时，在归一化层之上
+另叠一层即可，不必回到 per-command 渲染。
+
+PyYAML 而非 ruamel.yaml：只做单向 dump，不需要保留注释与往返保真。
 
 ### 认证
 
@@ -77,6 +80,7 @@ platformdirs 一类的库。
 
 | 包 | 用途 |
 |------|------|
-| `typer` | CLI 框架（自带 rich 依赖） |
+| `typer` | CLI 框架（自带 rich 依赖，用于 `--help` 与 usage 错误的排版） |
 | `httpx` | HTTP 客户端，发送 GraphQL 请求 |
-| `rich` | 终端富文本渲染（typer 间接依赖，显式声明便于直接使用） |
+| `pyyaml` | `-o yaml` 的渲染 |
+| `python-dotenv` | 读 `.env` 里的凭据（只读，不注入环境变量） |
