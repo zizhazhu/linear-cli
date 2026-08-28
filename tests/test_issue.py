@@ -187,29 +187,6 @@ def test_create_defaults_to_json_output(config_path) -> None:
 
 
 @respx.mock
-def test_create_pretty_outputs_identifier_and_url(config_path) -> None:
-    """Given 已登录且 team TES 存在
-    When 执行 issue create --pretty
-    Then 输出单行「标识 URL」人类可读格式
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {
-            "query Teams": httpx.Response(200, json=TEAMS_RESPONSE),
-            "mutation IssueCreate": httpx.Response(200, json=CREATE_ISSUE_RESPONSE),
-        }
-    )
-
-    result = runner.invoke(
-        app,
-        ["issue", "create", "--team", "TES", "--title", "T", "--body", "B", "--pretty"],
-    )
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip() == f"TES-123 {ISSUE['url']}"
-
-
-@respx.mock
 def test_create_json_flag_removed_errors(config_path) -> None:
     """Given JSON 已成为默认输出
     When 仍传旧的 --json flag
@@ -279,21 +256,6 @@ def test_view_defaults_to_full_json_output(config_path) -> None:
     assert json.loads(result.output) == ISSUE
 
 
-@respx.mock
-def test_view_pretty_prints_human_readable(config_path) -> None:
-    """Given 已登录且目标 issue 存在
-    When 执行 issue view --pretty
-    Then 输出人类可读格式：首行「标识 标题」，随后为正文原文
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Issue": httpx.Response(200, json=ISSUE_RESPONSE)})
-
-    result = runner.invoke(app, ["issue", "view", "TES-123", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert "TES-123 Test issue" in result.output
-    assert "Body line 1\nBody line 2" in result.output
-
 
 @respx.mock
 def test_view_json_flag_removed_errors(config_path) -> None:
@@ -346,22 +308,6 @@ def test_list_limit_flag_overrides_default(config_path) -> None:
         for call in respx.calls
     ]
     assert firsts == [50, 10]
-
-
-@respx.mock
-def test_list_pretty_smoke(config_path) -> None:
-    """Given 已登录且工作区有 issue
-    When 执行 issue list --pretty
-    Then 正常退出且输出非空（rich 表格内容不做字符串断言，见
-    tests/ABOUTME.md 渲染层约定）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route({"query Issues": httpx.Response(200, json=ISSUES_RESPONSE)})
-
-    result = runner.invoke(app, ["issue", "list", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
 
 
 @respx.mock
@@ -1013,29 +959,6 @@ def test_update_project_and_cycle_resolve(config_path) -> None:
 
 
 @respx.mock
-def test_update_pretty_prints_like_view(config_path) -> None:
-    """Given 已登录且更新成功
-    When issue update --pretty
-    Then 输出与 view --pretty 同构：首行「标识 标题」，随后为正文原文
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {
-            "query Issue(": httpx.Response(200, json=ISSUE_RESPONSE),
-            "mutation IssueUpdate(": httpx.Response(200, json=ISSUE_UPDATE_RESPONSE),
-        }
-    )
-
-    result = runner.invoke(
-        app, ["issue", "update", "TES-123", "--title", "T", "--pretty"]
-    )
-
-    assert result.exit_code == 0, result.stderr
-    assert "TES-123 Test issue" in result.output
-    assert "Body line 1\nBody line 2" in result.output
-
-
-@respx.mock
 def test_update_graphql_error_uses_shared_envelope(config_path) -> None:
     """Given mutation 响应含 GraphQL errors
     When issue update
@@ -1404,23 +1327,6 @@ def test_comment_list_unknown_issue_not_found(config_path) -> None:
     error = error_envelope(result)
     assert error["type"] == "not_found"
     assert "TES-999" in "; ".join(error["messages"])
-
-
-@respx.mock
-def test_comment_list_pretty_smoke(config_path) -> None:
-    """Given 已登录且 issue 有评论
-    When 执行 issue comment list --pretty
-    Then 正常退出且输出非空（渲染内容不做字符串断言，见 tests/ABOUTME.md）
-    """
-    write_api_key_to_config(config_path, FAKE_API_KEY)
-    _route(
-        {"query IssueComments(": httpx.Response(200, json=ISSUE_COMMENTS_RESPONSE)}
-    )
-
-    result = runner.invoke(app, ["issue", "comment", "list", "TES-123", "--pretty"])
-
-    assert result.exit_code == 0, result.stderr
-    assert result.output.strip()
 
 
 @respx.mock

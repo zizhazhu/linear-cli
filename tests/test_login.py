@@ -10,7 +10,6 @@ from conftest import (
     GRAPHQL_URL,
     LOGIN_OUTPUT,
     UNAUTHORIZED_RESPONSE,
-    VIEWER,
     VIEWER_RESPONSE,
     error_envelope,
 )
@@ -48,20 +47,6 @@ def test_login_defaults_to_json_output(config_path: Path) -> None:
 
     assert result.exit_code == 0
     assert json.loads(result.output) == LOGIN_OUTPUT
-
-
-@respx.mock
-def test_login_pretty_prints_human_readable(config_path: Path) -> None:
-    """Given 合法 API key
-    When 执行 login --pretty
-    Then 输出「已登录：Name <email>」人类可读格式
-    """
-    respx.post(GRAPHQL_URL).mock(return_value=httpx.Response(200, json=VIEWER_RESPONSE))
-
-    result = runner.invoke(app, ["login", "--api-key", FAKE_API_KEY, "--pretty"])
-
-    assert result.exit_code == 0
-    assert "已登录：Test User <test@example.com>" in result.output
 
 
 @respx.mock
