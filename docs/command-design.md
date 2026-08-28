@@ -12,8 +12,10 @@ CLI 的主要调用方是 Agent（经 shell 调用），其次才是人：
 - **默认输出 JSON** 到 stdout；`-o yaml` 输出同一份数据的 YAML 视图。人类
   可读性由 YAML 承担，不做表格：表格塞不进 Markdown 正文，且每条命令都要
   维护一份平行渲染。
-- **错误是数据结构**：失败时 stderr 输出单行 JSON 错误信封，退出码非 0。
-  Agent 读 `type` 字段分支，不做文本匹配。
+- **执行层错误是数据结构**：auth / not_found / graphql / http 在 stderr 输出
+  单行 JSON 错误信封，退出码 1。Agent 读 `type` 字段分支，不做文本匹配。
+  参数用法错误不在其列：由 typer 出纯文本 usage + 退出码 2，因此先分退出码，
+  再决定要不要解析 stderr。
 - `--help` 文本按 tool description 标准写：每个 flag 说清取值来源与格式。
 
 ### 错误信封

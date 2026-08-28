@@ -40,7 +40,7 @@ description: |-
   正文第一行
   正文第二行
 url: https://linear.app/workspace/issue/TES-123
-...
+# 其余字段省略，字段集与默认 JSON 完全一致
 ```
 
 `-o yaml` 与默认 JSON 是同一份数据的两个视图，字段完全一致；多行正文以 YAML 块标量呈现，原文逐行可读。
