@@ -6,13 +6,19 @@ GUIDE = """\
 linear-cli — a thin CLI over the Linear GraphQL API, built for agents and scripts.
 
 I/O contract
-- Success: single-line JSON on stdout. Add --pretty for human-readable output.
-- Failure: single-line JSON on stderr, exit code 1:
+- Success: single-line JSON on stdout. Every data command takes
+  -o/--output json|yaml; -o yaml renders the same data as YAML (multi-line by
+  nature, not a line-for-line replacement of the JSON view).
+- Execution failure (credentials, name resolution, Linear API, transport):
+  single-line JSON on stderr, exit code 1:
   {"error": {"type": ..., ...}} where type is one of
     auth       missing or invalid credentials
     not_found  unresolvable identifier or name (deterministic resolution)
     graphql    Linear API errors; messages[] are the verbatim API messages
     http       transport/status errors; includes status and raw body
+- Usage failure (unknown flag, illegal value, missing argument): plain usage
+  text on stderr, exit code 2. These are not wrapped in the error envelope,
+  so branch on the exit code first, then on error.type.
 - `linear guide` itself is offline: no network, no credentials required.
 
 Authentication
@@ -42,7 +48,9 @@ Core workflow
 
 Tips
 - Full flag reference: `linear <command> --help` (e.g. `linear issue list --help`).
-- Outputs are stable single-line JSON — safe to pipe to jq.
+- Default outputs are stable single-line JSON — safe to pipe to jq.
+- Reach for -o yaml when a human reads the output; keep the default for
+  anything a program parses.
 - To attach a label that does not exist yet:
   `linear label create --team TES --name <name>` first.
 """
