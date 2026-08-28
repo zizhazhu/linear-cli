@@ -247,10 +247,13 @@ PASS_THROUGH = [
 
 
 @pytest.mark.parametrize("normalizer,nodes,expected", PASS_THROUGH)
-def test_node_set_is_the_output_contract(normalizer, nodes, expected) -> None:
+def test_node_set_passes_through_in_a_new_container(
+    normalizer, nodes, expected
+) -> None:
     """Given 输出契约即 GraphQL 选择集的那些命令
     When 归一化其节点集
-    Then 数据等于节点集本身，且不与 API 响应共享同一对象（避免下游改写响应）
+    Then 数据等于节点集本身，且顶层容器是新对象（对返回值增删元素不影响 API
+    响应）；嵌套节点仍与响应共享对象，不在本断言范围内
     """
     normalized = normalizer(nodes)
 
